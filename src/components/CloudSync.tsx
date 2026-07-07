@@ -18,13 +18,135 @@ export function CloudSync() {
   useEffect(() => {
     const t1 = setInterval(() => setProgress((p) => (p >= 100 ? 100 : p + 0.5)), 50);
     const t2 = setInterval(() => setStep((s) => (s + 1) % steps.length), 800);
-    return () => { clearInterval(t1); clearInterval(t2); };
+    return () => {
+      clearInterval(t1);
+      clearInterval(t2);
+    };
   }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/95 backdrop-blur-xl p-4">
       <div className="relative w-full max-w-3xl">
-        <div className="mb-6 text-center sm:mb-8">
+        {/* SYNCING: Cloud sync animation */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 px-6 py-10 text-center text-white">
+          {/* Floating background particles */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute left-[10%] top-[20%] h-1.5 w-1.5 animate-[float_3s_ease-in-out_infinite] rounded-full bg-white/40" />
+            <div className="absolute right-[15%] top-[30%] h-1 w-1 animate-[float_3s_ease-in-out_infinite_0.5s] rounded-full bg-white/30" />
+            <div className="absolute left-[20%] bottom-[25%] h-1 w-1 animate-[float_3s_ease-in-out_infinite_1s] rounded-full bg-white/50" />
+            <div className="absolute right-[10%] bottom-[15%] h-1.5 w-1.5 animate-[float_3s_ease-in-out_infinite_1.5s] rounded-full bg-white/40" />
+          </div>
+
+          {/* Cloud Sync Visual */}
+          <div className="relative mx-auto h-44 w-full max-w-xs">
+            {/* Local device (left) */}
+            <div className="absolute left-0 top-1/2 -translate-y-1/2">
+              <div className="relative">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 shadow-lg backdrop-blur-sm">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="mt-1.5 text-[10px] font-semibold tracking-wider text-white/80">LOCAL</div>
+              </div>
+            </div>
+
+            {/* Cloud (center) */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <div className="relative">
+                {/* Pulsing rings behind cloud */}
+                <div className="absolute inset-0 -m-6 animate-[ping_2s_ease-in-out_infinite] rounded-full border-2 border-white/30" />
+                <div className="absolute inset-0 -m-3 animate-[ping_2s_ease-in-out_infinite_0.5s] rounded-full border-2 border-white/40" />
+
+                <div className="relative flex h-20 w-20 animate-[bounce-soft_2s_ease-in-out_infinite] items-center justify-center rounded-full bg-white shadow-2xl shadow-cyan-500/40">
+                  <svg className="h-10 w-10 text-cyan-500" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Cloud server (right) */}
+            <div className="absolute right-0 top-1/2 -translate-y-1/2">
+              <div className="relative">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 shadow-lg backdrop-blur-sm">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                  </svg>
+                </div>
+                <div className="mt-1.5 text-[10px] font-semibold tracking-wider text-white/80">SERVER</div>
+              </div>
+            </div>
+
+            {/* Connection line */}
+            <svg
+              className="absolute left-0 top-1/2 -z-0 h-1 w-full -translate-y-1/2"
+              viewBox="0 0 200 4"
+              preserveAspectRatio="none"
+            >
+              <line x1="0" y1="2" x2="200" y2="2" stroke="white" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="4 4" />
+            </svg>
+
+            {/* Upload packet (left -> cloud) */}
+            <div className="absolute left-0 top-1/2 -translate-y-1/2">
+              <div className="relative h-3 w-12 sm:w-20">
+                <div
+                  className="absolute h-3 w-3 animate-[travel-right_1.4s_ease-in-out_infinite] rounded-full bg-amber-300 shadow-lg shadow-amber-300/60"
+                  style={{ animationDelay: "0s" }}
+                />
+              </div>
+            </div>
+
+            {/* Download packet (cloud -> right) */}
+            <div className="absolute right-0 top-1/2 -translate-y-1/2">
+              <div className="relative h-3 w-12 sm:w-20">
+                <div
+                  className="absolute right-0 h-3 w-3 animate-[travel-left_1.4s_ease-in-out_infinite] rounded-full bg-emerald-300 shadow-lg shadow-emerald-300/60"
+                  style={{ animationDelay: "0.5s" }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Text content */}
+          <div className="relative mt-2">
+            <h3 className="text-xl font-extrabold">Syncing to Cloud</h3>
+            <p className="mt-1.5 text-sm text-white/80">
+              Please wait while your data is being uploaded...
+            </p>
+
+            {/* Progress bar */}
+            <div className="mx-auto mt-5 h-1.5 w-56 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full origin-left animate-[sync_2.1s_ease-in-out_forwards] rounded-full bg-white"
+                style={{ animationPlayState: progress >= 100 ? "paused" : "running" }}
+              />
+            </div>
+
+            <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-white/60">
+              Do not close this window
+            </p>
+          </div>
+
+          {/* Three status indicators at bottom */}
+          <div className="relative mt-5 flex justify-center gap-4 text-[10px] text-white/80">
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+              <span>Encrypting</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300 [animation-delay:0.3s]" />
+              <span>Uploading</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-200 [animation-delay:0.6s]" />
+              <span>Verifying</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Header section (kept from original) */}
+        <div className="mb-6 text-center sm:mb-8 mt-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-pink-500/30 bg-pink-500/10 px-3 py-1 text-xs font-medium text-pink-300 sm:text-sm">
             <span className="h-2 w-2 animate-pulse rounded-full bg-pink-400" />
             SYNC IN PROGRESS
@@ -33,75 +155,7 @@ export function CloudSync() {
           <p className="mt-1 text-xs text-zinc-400 sm:text-sm">{steps[step]}</p>
         </div>
 
-        {/* Three-Stage Transfer */}
-        <div className="relative">
-          {/* Connection Line - Desktop */}
-          <div className="absolute left-0 right-0 top-1/2 hidden h-1 -translate-y-1/2 md:block">
-            <div className="h-full w-full rounded-full bg-zinc-800" />
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-pink-500 via-purple-500 to-pink-500 transition-all duration-100"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          {/* Connection Line - Mobile (Vertical) */}
-          <div className="absolute left-1/2 top-0 bottom-0 hidden w-1 -translate-x-1/2 md:hidden">
-            <div className="h-full w-full rounded-full bg-zinc-800" />
-            <div
-              className="w-full rounded-full bg-gradient-to-b from-pink-500 via-purple-500 to-pink-500 transition-all duration-100"
-              style={{ height: `${progress}%` }}
-            />
-          </div>
-
-          <div className="relative grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-4">
-            {/* Local Device */}
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                <div className="absolute inset-0 animate-pulse rounded-2xl bg-pink-500/20" />
-                <div className="relative grid h-14 w-14 place-items-center rounded-2xl border border-pink-500/50 bg-gradient-to-br from-pink-500/20 to-rose-500/20 shadow-lg shadow-pink-500/20 sm:h-16 sm:w-16">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-pink-300 sm:h-8 sm:w-8">
-                    <rect x="5" y="2" width="14" height="20" rx="2" />
-                  </svg>
-                </div>
-              </div>
-              <p className="mt-2 text-xs font-semibold text-white sm:text-sm">Local Device</p>
-            </div>
-
-            {/* Cloud Server */}
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                <div className="absolute inset-0 animate-ping rounded-full bg-purple-500/20" style={{ animationDuration: "2s" }} />
-                <div className="relative grid h-20 w-20 place-items-center rounded-full border border-purple-500/50 bg-gradient-to-br from-purple-500/30 to-pink-500/30 shadow-2xl shadow-purple-500/30 sm:h-24 sm:w-24">
-                  <svg width="48" height="36" viewBox="0 0 120 80" fill="none">
-                    <defs>
-                      <linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#ec4899" />
-                        <stop offset="100%" stopColor="#a855f7" />
-                      </linearGradient>
-                    </defs>
-                    <path d="M30 60 C15 60, 5 50, 5 38 C5 28, 15 20, 25 20 C28 10, 38 5, 50 5 C62 5, 72 12, 75 22 C85 20, 95 25, 100 35 C110 35, 115 42, 115 50 C115 56, 110 60, 105 60 Z" fill="url(#cg)" />
-                  </svg>
-                </div>
-              </div>
-              <p className="mt-2 text-xs font-semibold text-white sm:text-sm">Cloud Server</p>
-            </div>
-
-            {/* Database */}
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                <div className="absolute inset-0 animate-pulse rounded-2xl bg-emerald-500/20" style={{ animationDuration: "1.8s" }} />
-                <div className="relative grid h-14 w-14 place-items-center rounded-2xl border border-emerald-500/50 bg-gradient-to-br from-emerald-500/20 to-green-500/20 shadow-lg shadow-emerald-500/20 sm:h-16 sm:w-16">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-emerald-300 sm:h-8 sm:w-8">
-                    <rect x="2" y="3" width="20" height="6" rx="1" />
-                    <rect x="2" y="15" width="20" height="6" rx="1" />
-                  </svg>
-                </div>
-              </div>
-              <p className="mt-2 text-xs font-semibold text-white sm:text-sm">Database</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Progress Bar */}
+        {/* Progress bar (from original) */}
         <div className="mt-6 sm:mt-8">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold text-white sm:text-sm">Upload Progress</span>
@@ -128,9 +182,15 @@ export function CloudSync() {
                   : "border-zinc-800/50 bg-zinc-900/30 text-zinc-600"
               }`}
             >
-              <div className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                i < step ? "bg-emerald-400" : i === step ? "bg-pink-400 animate-pulse" : "bg-zinc-700"
-              }`} />
+              <div
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  i < step
+                    ? "bg-emerald-400"
+                    : i === step
+                    ? "bg-pink-400 animate-pulse"
+                    : "bg-zinc-700"
+                }`}
+              />
               <span className={`flex-1 ${i === step ? "font-semibold text-white" : ""}`}>{s}</span>
               {i < step && <span className="ml-auto text-[10px] text-emerald-400">done</span>}
               {i === step && <span className="ml-auto text-[10px] text-pink-400">active</span>}
@@ -153,6 +213,34 @@ export function CloudSync() {
             <div className="text-xs font-bold text-emerald-400">wait</div>
           </div>
         </div>
+
+        {/* Animations */}
+        <style>{`
+          @keyframes sync {
+            0% { transform: scaleX(0); }
+            100% { transform: scaleX(1); }
+          }
+          @keyframes float {
+            0%, 100% { transform: translateY(0px); opacity: 0.4; }
+            50% { transform: translateY(-12px); opacity: 0.9; }
+          }
+          @keyframes bounce-soft {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+          }
+          @keyframes travel-right {
+            0% { left: 0; opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+          }
+          @keyframes travel-left {
+            0% { right: 0; opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { right: 100%; opacity: 0; }
+          }
+        `}</style>
       </div>
     </div>
   );
