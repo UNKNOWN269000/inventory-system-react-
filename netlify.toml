@@ -1,0 +1,82 @@
+# ============================================
+# Netlify Configuration
+# Project: Aluminum Management System
+# ============================================
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  BUN_VERSION = "1.2.15"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# ============================================
+# Environment Variables (Build-time)
+# These are visible in the dashboard but safe to commit
+# ============================================
+[build.environment]
+  NEXT_PUBLIC_SUPABASE_URL = "https://cduuwyrtbtduumwgmydp.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkdXV3eXJ0YnRkdXVtd2dteWRwIiwicm2VsIjoiYW5vbiIsImlhdCI6MTc4MjE3ODY0NiwiZXhwIjoyMDk3NzU0NjQ2fQ.-wmuaUF63I_py-DjZlR-YwZ6xAJKzNCbOq8n0C0akR0"
+
+# ============================================
+# Redirects & Rewrites
+# ============================================
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# ============================================
+# Headers
+# ============================================
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ============================================
+# Functions Configuration
+# ============================================
+[functions]
+  node_bundler = "esbuild"
+
+# ============================================
+# Contexts
+# ============================================
+[context.production]
+  command = "npm run build"
+
+[context.production.environment]
+  NODE_ENV = "production"
+
+[context.deploy-preview]
+  command = "npm run build"
+
+[context.deploy-preview.environment]
+  NODE_ENV = "preview"
+
+[context.branch-deploy]
+  command = "npm run build"
+
+[context.branch-deploy.environment]
+  NODE_ENV = "development"
