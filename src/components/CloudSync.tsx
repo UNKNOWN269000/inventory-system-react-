@@ -4,30 +4,18 @@ import { useEffect, useState } from "react";
 
 export function CloudSync() {
   const [progress, setProgress] = useState(0);
-  const [step, setStep] = useState(0);
-
-  const steps = [
-    "Initializing secure connection...",
-    "Encrypting data on local device...",
-    "Validating data integrity...",
-    "Uploading to cloud server...",
-    "Writing to database...",
-    "Verifying upload completion...",
-  ];
 
   useEffect(() => {
-    const t1 = setInterval(() => setProgress((p) => (p >= 100 ? 100 : p + 0.5)), 50);
-    const t2 = setInterval(() => setStep((s) => (s + 1) % steps.length), 800);
-    return () => {
-      clearInterval(t1);
-      clearInterval(t2);
-    };
+    const t1 = setInterval(() => {
+      setProgress((p) => (p >= 100 ? 100 : p + 0.5));
+    }, 50);
+    return () => clearInterval(t1);
   }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/95 backdrop-blur-xl p-4">
       <div className="relative w-full max-w-3xl">
-        {/* SYNCING: Cloud sync animation */}
+        {/* Cloud sync animation card (only this remains) */}
         <div className="relative overflow-hidden bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 px-6 py-10 text-center text-white">
           {/* Floating background particles */}
           <div className="absolute inset-0 overflow-hidden">
@@ -54,7 +42,6 @@ export function CloudSync() {
             {/* Cloud (center) */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               <div className="relative">
-                {/* Pulsing rings behind cloud */}
                 <div className="absolute inset-0 -m-6 animate-[ping_2s_ease-in-out_infinite] rounded-full border-2 border-white/30" />
                 <div className="absolute inset-0 -m-3 animate-[ping_2s_ease-in-out_infinite_0.5s] rounded-full border-2 border-white/40" />
 
@@ -87,17 +74,16 @@ export function CloudSync() {
               <line x1="0" y1="2" x2="200" y2="2" stroke="white" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="4 4" />
             </svg>
 
-            {/* Upload packet (left -> cloud) */}
+            {/* Upload packet */}
             <div className="absolute left-0 top-1/2 -translate-y-1/2">
               <div className="relative h-3 w-12 sm:w-20">
                 <div
                   className="absolute h-3 w-3 animate-[travel-right_1.4s_ease-in-out_infinite] rounded-full bg-amber-300 shadow-lg shadow-amber-300/60"
-                  style={{ animationDelay: "0s" }}
                 />
               </div>
             </div>
 
-            {/* Download packet (cloud -> right) */}
+            {/* Download packet */}
             <div className="absolute right-0 top-1/2 -translate-y-1/2">
               <div className="relative h-3 w-12 sm:w-20">
                 <div
@@ -118,8 +104,8 @@ export function CloudSync() {
             {/* Progress bar */}
             <div className="mx-auto mt-5 h-1.5 w-56 overflow-hidden rounded-full bg-white/20">
               <div
-                className="h-full origin-left animate-[sync_2.1s_ease-in-out_forwards] rounded-full bg-white"
-                style={{ animationPlayState: progress >= 100 ? "paused" : "running" }}
+                className="h-full rounded-full bg-white transition-all duration-100"
+                style={{ width: `${progress}%` }}
               />
             </div>
 
@@ -128,7 +114,7 @@ export function CloudSync() {
             </p>
           </div>
 
-          {/* Three status indicators at bottom */}
+          {/* Status indicators */}
           <div className="relative mt-5 flex justify-center gap-4 text-[10px] text-white/80">
             <div className="flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
@@ -145,81 +131,8 @@ export function CloudSync() {
           </div>
         </div>
 
-        {/* Header section (kept from original) */}
-        <div className="mb-6 text-center sm:mb-8 mt-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-pink-500/30 bg-pink-500/10 px-3 py-1 text-xs font-medium text-pink-300 sm:text-sm">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-pink-400" />
-            SYNC IN PROGRESS
-          </div>
-          <h2 className="mt-2 text-2xl font-bold text-white sm:mt-3 sm:text-3xl">Syncing Data</h2>
-          <p className="mt-1 text-xs text-zinc-400 sm:text-sm">{steps[step]}</p>
-        </div>
-
-        {/* Progress bar (from original) */}
-        <div className="mt-6 sm:mt-8">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-white sm:text-sm">Upload Progress</span>
-            <span className="text-xs font-bold text-pink-400 sm:text-sm">{Math.round(progress)}%</span>
-          </div>
-          <div className="relative h-2 overflow-hidden rounded-full bg-zinc-900">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-pink-500 via-purple-500 to-pink-500 transition-all"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Status Steps */}
-        <div className="mt-4 space-y-1.5 sm:mt-6">
-          {steps.map((s, i) => (
-            <div
-              key={i}
-              className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs sm:px-3 sm:text-sm ${
-                i === step
-                  ? "border-pink-500/50 bg-pink-500/10"
-                  : i < step
-                  ? "border-emerald-500/30 bg-emerald-500/5 text-zinc-500"
-                  : "border-zinc-800/50 bg-zinc-900/30 text-zinc-600"
-              }`}
-            >
-              <div
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  i < step
-                    ? "bg-emerald-400"
-                    : i === step
-                    ? "bg-pink-400 animate-pulse"
-                    : "bg-zinc-700"
-                }`}
-              />
-              <span className={`flex-1 ${i === step ? "font-semibold text-white" : ""}`}>{s}</span>
-              {i < step && <span className="ml-auto text-[10px] text-emerald-400">done</span>}
-              {i === step && <span className="ml-auto text-[10px] text-pink-400">active</span>}
-            </div>
-          ))}
-        </div>
-
-        {/* Live Stats */}
-        <div className="mt-4 grid grid-cols-3 gap-1.5 sm:mt-6 sm:gap-2">
-          <div className="rounded-lg border border-pink-500/20 bg-pink-500/5 p-1.5 text-center sm:p-2">
-            <div className="text-[9px] text-zinc-400 sm:text-[10px]">Encrypt</div>
-            <div className="text-xs font-bold text-pink-400">100%</div>
-          </div>
-          <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-1.5 text-center sm:p-2">
-            <div className="text-[9px] text-zinc-400 sm:text-[10px]">Upload</div>
-            <div className="text-xs font-bold text-purple-400">sync</div>
-          </div>
-          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-1.5 text-center sm:p-2">
-            <div className="text-[9px] text-zinc-400 sm:text-[10px]">DB</div>
-            <div className="text-xs font-bold text-emerald-400">wait</div>
-          </div>
-        </div>
-
         {/* Animations */}
         <style>{`
-          @keyframes sync {
-            0% { transform: scaleX(0); }
-            100% { transform: scaleX(1); }
-          }
           @keyframes float {
             0%, 100% { transform: translateY(0px); opacity: 0.4; }
             50% { transform: translateY(-12px); opacity: 0.9; }
