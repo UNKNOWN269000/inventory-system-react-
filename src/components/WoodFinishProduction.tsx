@@ -94,7 +94,24 @@ export default function WoodFinishProduction() {
 
   useEffect(() => {
     loadRecentData();
+    loadPendingFromLocalStorage();
   }, []);
+
+  // Save pending to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("pendingWoodRecords", JSON.stringify(pendingRecords));
+  }, [pendingRecords]);
+
+  const loadPendingFromLocalStorage = () => {
+    try {
+      const stored = localStorage.getItem("pendingWoodRecords");
+      if (stored) {
+        setPendingRecords(JSON.parse(stored));
+      }
+    } catch (err) {
+      console.error("Error loading pending records:", err);
+    }
+  };
 
   const loadRecentData = async () => {
     try {
@@ -175,49 +192,71 @@ export default function WoodFinishProduction() {
     setPendingRecords(pendingRecords.filter((_, i) => i !== index));
   };
 
-  const handleAddToPending = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isDamage && !form.damageQuantity) {
-      alert("Please enter damage quantity");
-      return;
-    }
+  // Check if a record is duplicate (same profile, surface, length, date)
+  const isDuplicate = (newRecord: WoodEntry): boolean => {
+    // Check against pending records
+    const pendingDup = pendingRecords.some(
+      (r) =>
+        r.profile === newRecord.profile &&
+        r.surface === newRecord.surface &&
+        r.length === newRecord.length &&
+        r.wood_finish_date === newRecord.wood_finish_date
+    );
 
-    const newRecord: WoodEntry = {
-      base_colour_date: form.baseColourDate,
-      wood_finish_date: form.woodFinishDate,
-      profile: form.profile,
-      surface: form.surface,
-      length: form.length,
-      quantity: form.quantity,
-      is_damage: isDamage,
-      damage_quantity: isDamage ? form.damageQuantity : "",
-      operator: user ?? undefined,
-      submitted: false,
-    };
+    // Check against already submitted records in recent data
+    const recentDup = recentData.some(
+      (r) =>
+        r.profile === newRecord.profile &&
+        r.surface === newRecord.surface &&
+        r.length === newRecord.length &&
+        r.wood_finish_date === newRecord.wood_finish_date &&
+        r.submitted === true
+    );
 
-    if (editingIndex !== null) {
-      const updated = [...pendingRecords];
-      updated[editingIndex] = newRecord;
-      setPendingRecords(updated);
-      setEditingIndex(null);
-    } else {
-      setPendingRecords([...pendingRecords, newRecord]);
-    }
-    closeModal();
+    return pendingDup || recentDup;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // ADD TO PENDING - Saves to DB with submitted=false
+  const handleAddToPending = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isDamage && !form.damageQuantity) {
       alert("Please enter damage quantity");
       return;
     }
 
-    setShowCloudSync(true);
     setLoading(true);
-
     try {
-      if (editingRecentId !== null) {
+      if (editingIndex !== null) {
+        // Update existing pending record
+        const record = pendingRecords[editingIndex];
+        if (record.id) {
+          const updateData = {
+            base_colour_date: form.baseColourDate,
+            wood_finish_date: form.woodFinishDate,
+            profile: form.profile,
+            surface: form.surface,
+            length: form.length,
+            quantity: form.quantity,
+            is_damage: isDamage,
+            damage_quantity: isDamage ? form.damageQuantity : "",
+            submitted: false,
+          };
+
+          const { error } = await supabase
+            .from("wood_finish_production")
+            .update(updateData)
+            .eq("id", record.id);
+
+          if (error) throw error;
+
+          // Update local state
+          const updated = [...pendingRecords];
+          updated[editingIndex] = { ...record, ...updateData };
+          setPendingRecords(updated);
+        }
+        setEditingIndex(null);
+      } else if (editingRecentId !== null) {
+        // Edit a previously submitted record - keep submitted=true
         const updateData = {
           base_colour_date: form.baseColourDate,
           wood_finish_date: form.woodFinishDate,
@@ -227,6 +266,7 @@ export default function WoodFinishProduction() {
           quantity: form.quantity,
           is_damage: isDamage,
           damage_quantity: isDamage ? form.damageQuantity : "",
+          submitted: true,
         };
 
         const { error } = await supabase
@@ -235,9 +275,12 @@ export default function WoodFinishProduction() {
           .eq("id", editingRecentId);
 
         if (error) throw error;
+
+        await loadRecentData();
+        setEditingRecentId(null);
       } else {
-        const allRecords = [...pendingRecords];
-        const newEntry = {
+        // New record - check for duplicate first
+        const newRecord: WoodEntry = {
           base_colour_date: form.baseColourDate,
           wood_finish_date: form.woodFinishDate,
           profile: form.profile,
@@ -247,30 +290,77 @@ export default function WoodFinishProduction() {
           is_damage: isDamage,
           damage_quantity: isDamage ? form.damageQuantity : "",
           operator: user ?? undefined,
-          submitted: true,
+          submitted: false,
         };
-        allRecords.push(newEntry);
 
-        const { error } = await supabase
+        if (isDuplicate(newRecord)) {
+          alert("This record already exists (same profile, surface, length, and date)!");
+          setLoading(false);
+          return;
+        }
+
+        // Save to DB with submitted=false
+        const { data, error } = await supabase
           .from("wood_finish_production")
-          .insert(allRecords);
+          .insert([newRecord])
+          .select();
 
         if (error) throw error;
+
+        if (data && data[0]) {
+          setPendingRecords([...pendingRecords, data[0]]);
+        }
+      }
+      closeModal();
+    } catch (err: any) {
+      console.error("Error saving to pending:", err);
+      alert(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // FINAL SUBMIT - Updates existing pending records to submitted=true (no duplicate insert)
+  const handleFinalSubmit = async () => {
+    if (pendingRecords.length === 0) {
+      alert("No pending records to submit");
+      return;
+    }
+
+    setShowCloudSync(true);
+    setLoading(true);
+
+    try {
+      // Update each pending record to submitted=true
+      const updatePromises = pendingRecords
+        .filter((record) => record.id && record.submitted === false)
+        .map((record) =>
+          supabase
+            .from("wood_finish_production")
+            .update({ submitted: true })
+            .eq("id", record.id)
+        );
+
+      const results = await Promise.all(updatePromises);
+      
+      const errors = results.filter((r) => r.error);
+      if (errors.length > 0) {
+        throw new Error(`Failed to update ${errors.length} record(s)`);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
       setShowCloudSync(false);
       setShowSuccess(true);
 
       setTimeout(() => {
         setShowSuccess(false);
         setPendingRecords([]);
-        setEditingRecentId(null);
+        localStorage.removeItem("pendingWoodRecords");
         closeModal();
         loadRecentData();
       }, 2000);
     } catch (err: any) {
-      console.error("Error saving:", err);
+      console.error("Error submitting:", err);
       alert(`Error: ${err.message}`);
       setShowCloudSync(false);
     } finally {
@@ -348,7 +438,7 @@ export default function WoodFinishProduction() {
                 </span>
               </h2>
               <button
-                onClick={handleSubmit}
+                onClick={handleFinalSubmit}
                 disabled={loading}
                 className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-black text-black shadow-lg shadow-orange-500/20 transition hover:shadow-orange-500/40 disabled:opacity-50"
               >
@@ -374,7 +464,7 @@ export default function WoodFinishProduction() {
                 </thead>
                 <tbody>
                   {pendingRecords.map((record, index) => (
-                    <tr key={index} className="border-b border-white/5 transition hover:bg-white/5">
+                    <tr key={record.id || index} className="border-b border-white/5 transition hover:bg-white/5">
                       <td className="px-3 py-3 font-bold text-orange-400">{record.profile}</td>
                       <td className="px-3 py-3 text-zinc-300">{record.surface}</td>
                       <td className="px-3 py-3 text-zinc-300">{record.base_colour_date}</td>
@@ -428,6 +518,7 @@ export default function WoodFinishProduction() {
                     <th className="px-3 py-3">Length</th>
                     <th className="px-3 py-3">Qty</th>
                     <th className="px-3 py-3">Damage</th>
+                    <th className="px-3 py-3">Status</th>
                     <th className="px-3 py-3 text-right">Action</th>
                   </tr>
                 </thead>
@@ -445,6 +536,13 @@ export default function WoodFinishProduction() {
                           <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-300">{row.damage_quantity}</span>
                         ) : (
                           <span className="text-zinc-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        {row.submitted ? (
+                          <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-300">Submitted</span>
+                        ) : (
+                          <span className="rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-300">Pending</span>
                         )}
                       </td>
                       <td className="px-3 py-3 text-right">
@@ -475,7 +573,7 @@ export default function WoodFinishProduction() {
                         <circle cx="12" cy="12" r="10" />
                         <path d="M12 8v8M8 12h8" />
                       </svg>
-                      {editingRecentId ? "Edit Production" : "Add Production"}
+                      {editingRecentId ? "Edit Production" : editingIndex !== null ? "Edit Pending" : "Add Production"}
                     </h3>
                     <button onClick={closeModal} className="text-zinc-500 transition hover:text-white p-1">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -484,7 +582,7 @@ export default function WoodFinishProduction() {
                     </button>
                   </div>
                 </div>
-                <form className="max-h-[80vh] overflow-y-auto p-6 space-y-4">
+                <form onSubmit={handleAddToPending} className="max-h-[80vh] overflow-y-auto p-6 space-y-4">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Base Colour Production Date</label>
@@ -579,8 +677,8 @@ export default function WoodFinishProduction() {
                     <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-bold text-zinc-300 backdrop-blur-sm transition hover:border-orange-400 hover:text-orange-300">
                       Cancel
                     </button>
-                    <button type="button" onClick={handleAddToPending} disabled={loading} className="flex-1 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3.5 text-sm font-black text-black shadow-lg shadow-orange-500/20 transition hover:shadow-orange-500/40 disabled:opacity-50">
-                      {editingIndex !== null ? "Update Pending" : "Add to Pending"}
+                    <button type="submit" disabled={loading} className="flex-1 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3.5 text-sm font-black text-black shadow-lg shadow-orange-500/20 transition hover:shadow-orange-500/40 disabled:opacity-50">
+                      {loading ? "Saving..." : editingIndex !== null ? "Update Pending" : "Add to Pending"}
                     </button>
                   </div>
                 </form>
@@ -602,8 +700,8 @@ export default function WoodFinishProduction() {
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-white">Production Record Saved</h2>
-            <p className="mt-2 text-sm text-zinc-400">Data synced to database successfully</p>
+            <h2 className="text-2xl font-bold text-white">Production Records Submitted</h2>
+            <p className="mt-2 text-sm text-zinc-400">All pending records marked as submitted</p>
           </div>
         </div>
       )}
