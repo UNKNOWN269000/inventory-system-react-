@@ -465,7 +465,7 @@ export default function ProfileIncome() {
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div><label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Extrusion Date</label><input type="date" value={form.extDate} onChange={(e) => setForm({ ...form, extDate: e.target.value })} required className={glassInput} /></div>
-                <div><Dropdown label="Shift" value={form.shift} onChange={(v) => setForm({ ...form, shift: v })} placeholder="Select Shift" required options={[{ value: "Day", label: "Day" }, { value: "Night", label: "Night" }, { value: "Other", label: "Other" }]} /></div>
+                <div><Dropdown label="Shift" value={form.shift} onChange={(v) => setForm({ ...form, shift: v })} placeholder="Select Shift" required options={[{ value: "Day", label: "Day" }, { value: "Night", label: "Night" }, { value: "Day I", label: "Day I" }, { value: "Day II", label: "Day II" }]} /></div>
                 <div><label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Billet Batch No</label><input type="text" value={form.batchNo} onChange={(e) => setForm({ ...form, batchNo: e.target.value })} required className={glassInput} /></div>
                 <div className="relative sm:col-span-2">
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Profile (Search)</label>
