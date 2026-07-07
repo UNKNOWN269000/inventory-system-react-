@@ -1,38 +1,93 @@
-# wrangler.toml
-name = "my-worker"
-main = "src/index.ts"
+# ============================================
+# Cloudflare Pages Configuration
+# Project: Aluminum Management System
+# ============================================
+
+name = "aluminum-management-system"
+pages_build_output_dir = ".next"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
 
-# Custom domain routes
-routes = [
-  { pattern = "api.example.com/*", zone_name = "example.com" },
-  { pattern = "example.com/api/*", zone_name = "example.com" }
-]
+# ============================================
+# Build Configuration
+# ============================================
+# Cloudflare will automatically run: bun run build
+# Or you can specify custom build command:
+# [build]
+# command = "bun run build"
+# cwd = "."
+# watch_dir = "src"
 
-# Environment variables
+# ============================================
+# Public Environment Variables
+# (Safe to commit - visible in client code)
+# ============================================
 [vars]
-ENVIRONMENT = "production"
-API_URL = "https://api.example.com"
+NODE_ENV = "production"
 
-# KV Namespace binding
-[[kv_namespaces]]
-binding = "MY_KV"
-id = "your-kv-namespace-id"
+# Supabase - Public
+NEXT_PUBLIC_SUPABASE_URL = "https://cduuwyrtbtduumwgmydp.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkdXV3eXJ0YnRkdXVtd2dteWRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNzg2NDYsImV4cCI6MjA5Nzc1NDY0Nn0.-wmuaUF63I_py-DjZlR-YwZ6xAJKzNCbOq8n0C0akR0"
 
-# D1 Database binding
-[[d1_databases]]
-binding = "DB"
-database_name = "my-database"
-database_id = "your-database-id"
+# ============================================
+# Custom Domain Routes (uncomment when ready)
+# ============================================
+# routes = [
+#   { pattern = "yourdomain.com/*", zone_name = "yourdomain.com" },
+#   { pattern = "www.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
 
-# R2 Bucket binding
-[[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "my-bucket"
+# ============================================
+# Headers
+# ============================================
+[[headers]]
+for = "/*"
+[headers.values]
+X-Frame-Options = "DENY"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
-# Environment-specific config
-[env.staging]
-name = "my-worker-staging"
-routes = [
-  { pattern = "staging.example.com/*", zone_name = "example.com" }
-]
+[[headers]]
+for = "/_next/static/*"
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
+
+# ============================================
+# Production Environment
+# ============================================
+[env.production]
+name = "aluminum-management-system"
+
+[env.production.vars]
+NODE_ENV = "production"
+NEXT_PUBLIC_SUPABASE_URL = "https://cduuwyrtbtduumwgmydp.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkdXV3eXJ0YnRkdXVtd2dteWRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNzg2NDYsImV4cCI6MjA5Nzc1NDY0Nn0.-wmuaUF63I_py-DjZlR-YwZ6xAJKzNCbOq8n0C0akR0"
+
+# ============================================
+# Preview Environment (for branch previews)
+# ============================================
+[env.preview]
+name = "aluminum-management-system-preview"
+
+[env.preview.vars]
+NODE_ENV = "preview"
+NEXT_PUBLIC_SUPABASE_URL = "https://cduuwyrtbtduumwgmydp.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkdXV3eXJ0YnRkdXVtd2dteWRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNzg2NDYsImV4cCI6MjA5Nzc1NDY0Nn0.-wmuaUF63I_py-DjZlR-YwZ6xAJKzNCbOq8n0C0akR0"
+
+# ============================================
+# Observability
+# ============================================
+[observability]
+enabled = true
+
+# ============================================
+# Compatibility
+# ============================================
+# Note: For Next.js 16 with App Router, you might need
+# the OpenNext adapter for full edge support:
+# npm install -D @opennextjs/cloudflare
+#
+# Then add:
+# main = "./.open-next/worker.js"
+# assets = { directory = "./.open-next/assets", binding = "ASSETS" }
