@@ -746,7 +746,10 @@ export default function AnodizingBinding() {
                         className={glassInput}
                       />
                     </div>
-                    <div>
+                   
+
+                  {/* First Rack Group */}
+                     <div>
                       <Dropdown
                         label="Surface"
                         value={form.surface}
@@ -760,11 +763,9 @@ export default function AnodizingBinding() {
                       />
                     </div>
                   </div>
-
-                  {/* First Rack Group */}
                   <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                      Rack Group 1
+                      Surface Selection I
                     </p>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
@@ -827,7 +828,7 @@ export default function AnodizingBinding() {
                   {/* Second Rack Group */}
                   <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                      Rack Group 2
+                      Surface Selection II
                     </p>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
