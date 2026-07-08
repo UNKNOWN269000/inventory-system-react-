@@ -3,11 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Dropdown } from "@/components/Dropdown";
 
 export default function SignupPage() {
   const router = useRouter();
+  const { login } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -92,9 +94,11 @@ export default function SignupPage() {
 
       if (error) throw error;
 
-      setSuccess("Account created successfully! Redirecting to login page...");
+      // Auto-login after signup
+      login(form.username);
+      setSuccess("Account created successfully! Redirecting...");
       setTimeout(() => {
-        router.push("/");
+        router.push("/home");
       }, 2000);
     } catch (err: any) {
       setError(err.message || "Failed to create account");
