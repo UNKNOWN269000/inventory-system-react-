@@ -93,9 +93,6 @@ export function LoginForm() {
               />
               Remember this device
             </label>
-            <Link href="#" className="text-pink-400 hover:text-pink-300">
-              Forgot password?
-            </Link>
           </div>
         </div>
 
