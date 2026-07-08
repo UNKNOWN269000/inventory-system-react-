@@ -8,7 +8,7 @@ import { SlideMenu } from "@/components/SlideMenu";
 import { MenuButton } from "@/components/MenuButton";
 import { useAuth } from "@/context/AuthContext";
 import { menuStructure } from "@/lib/menu";
-import animationData from "@/lib/redirect-animation.json";
+import animationData from "@/lib/redirect-animation.js";
 
 // Dynamically import Lottie with SSR disabled
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
