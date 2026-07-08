@@ -3,10 +3,15 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { SlideMenu } from "@/components/SlideMenu";
 import { MenuButton } from "@/components/MenuButton";
 import { useAuth } from "@/context/AuthContext";
 import { menuStructure } from "@/lib/menu";
+import animationData from "@/lib/redirect-animation.json";
+
+// Dynamically import Lottie with SSR disabled
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function HomeDashboardPage() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -25,8 +30,28 @@ export default function HomeDashboardPage() {
 
   if (role && role !== "Admin") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <p className="text-zinc-400">Redirecting to your department...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-8">
+        {/* Lottie Animation */}
+        <div className="w-[500px] max-w-[90vw]">
+          <Lottie
+            animationData={animationData}
+            loop={true}
+            autoplay={true}
+            style={{ width: "100%", height: "auto" }}
+          />
+        </div>
+        {/* Animated text */}
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-pink-400" />
+          <p className="text-zinc-400 text-base tracking-wide">
+            Redirecting to your department...
+          </p>
+          <span className="flex gap-1">
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.3s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.15s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500" />
+          </span>
+        </div>
       </div>
     );
   }
