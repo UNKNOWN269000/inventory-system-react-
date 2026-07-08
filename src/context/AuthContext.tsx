@@ -13,6 +13,8 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const PUBLIC_PATHS = ["/", "/signup"];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && pathname !== "/") {
+    if (!isLoading && !isAuthenticated && !PUBLIC_PATHS.includes(pathname)) {
       router.push("/");
     }
   }, [isAuthenticated, isLoading, pathname, router]);
