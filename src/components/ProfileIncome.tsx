@@ -16,7 +16,7 @@ type LengthQty = { checked: boolean; qty: string };
 type ProfileEntry = {
   id?: number;
   profile_no?: string;
-  user_id?: string | null; // ✅ FIX: allow null to match authUserId state
+  user_id?: string | null;
   session_id?: string;
   ext_date: string;
   shift: string;
@@ -145,6 +145,7 @@ export default function ProfileIncome() {
   const [loading, setLoading] = useState(false);
   const [recentData, setRecentData] = useState<RecentEntry[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [loadingPending, setLoadingPending] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLDivElement>(null);
@@ -169,6 +170,7 @@ export default function ProfileIncome() {
       setAuthUserId(data.user?.id ?? null);
     });
     loadRecentData();
+    loadPendingEntries(); // ✅ NEW: load unsaved entries from DB
   }, []);
 
   // Close profile search dropdown on outside click
@@ -205,12 +207,29 @@ export default function ProfileIncome() {
     }
   };
 
+  // ✅ NEW: Load pending (submitted = false) entries from DB
+  const loadPendingEntries = async () => {
+    setLoadingPending(true);
+    try {
+      const { data, error } = await supabase
+        .from("profile_income")
+        .select("*")
+        .eq("submitted", false)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setEntries(data || []);
+    } catch (err: any) {
+      console.error("Error loading pending entries:", err);
+    } finally {
+      setLoadingPending(false);
+    }
+  };
+
   // ── Derived ──
   const filteredProfiles = PROFILES.filter((p) =>
     p.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Yield = Out / In × 100 (no off cut)
   const calcYield = () => {
     const inW = parseFloat(form.inWeight) || 0;
     const outW = parseFloat(form.outWeight) || 0;
@@ -218,7 +237,6 @@ export default function ProfileIncome() {
     return ((outW / inW) * 100).toFixed(2);
   };
 
-  // Build the row that goes into Supabase from the form state
   const buildEntry = () => ({
     user_id: authUserId,
     session_id: sessionId,
@@ -270,6 +288,7 @@ export default function ProfileIncome() {
       setShowAddModal(false);
       setEditingId(null);
       resetForm();
+      await loadPendingEntries(); // ✅ refresh from DB
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     } finally {
@@ -296,14 +315,13 @@ export default function ProfileIncome() {
         .update({ submitted: true })
         .in("id", ids);
       if (error) throw error;
-      setEntries(entries.map((e) => ({ ...e, submitted: true })));
+      await loadPendingEntries(); // ✅ refresh — should now be empty
+      await loadRecentData();
       await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
-        setEntries([]);
-        loadRecentData();
       }, 2000);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
@@ -368,6 +386,7 @@ export default function ProfileIncome() {
       const { error } = await supabase.from("profile_income").delete().eq("id", id);
       if (error) throw error;
       setEntries(entries.filter((e) => e.id !== id));
+      await loadPendingEntries(); // ✅ refresh
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     }
@@ -459,24 +478,34 @@ export default function ProfileIncome() {
               <div>
                 <h2 className="text-xl font-bold text-white">Pending Records</h2>
                 <p className="text-xs text-zinc-500">
-                  {entries.length === 0
-                    ? "No records yet"
+                  {loadingPending
+                    ? "Loading…"
+                    : entries.length === 0
+                    ? "No pending records"
                     : `${entries.length} profile(s) pending submission`}
                 </p>
               </div>
             </div>
-            {entries.length > 0 && (
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadPendingEntries}
+                disabled={loadingPending}
+                className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:text-pink-300 disabled:opacity-50"
+              >
+                {loadingPending ? "Loading…" : "↻ Refresh"}
+              </button>
+              {entries.length > 0 && (
                 <span className="grid h-8 w-8 place-items-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-400">
                   {entries.length}
                 </span>
-                <span className="text-xs text-zinc-500">entries</span>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-xl">
-            {entries.length === 0 ? (
+            {loadingPending ? (
+              <div className="py-12 text-center text-zinc-500">Loading pending records…</div>
+            ) : entries.length === 0 ? (
               <div className="py-12 text-center text-zinc-500">No data recorded for this session.</div>
             ) : (
               <div className="space-y-2">
