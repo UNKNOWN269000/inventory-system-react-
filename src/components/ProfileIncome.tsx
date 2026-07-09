@@ -16,7 +16,7 @@ type LengthQty = { checked: boolean; qty: string };
 type ProfileEntry = {
   id?: number;
   profile_no?: string;
-  user_id?: string;
+  user_id?: string | null; // ✅ FIX: allow null to match authUserId state
   session_id?: string;
   ext_date: string;
   shift: string;
@@ -210,7 +210,7 @@ export default function ProfileIncome() {
     p.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // ✅ FIXED: Yield = Out / In × 100 (no off cut)
+  // Yield = Out / In × 100 (no off cut)
   const calcYield = () => {
     const inW = parseFloat(form.inWeight) || 0;
     const outW = parseFloat(form.outWeight) || 0;
@@ -219,8 +219,8 @@ export default function ProfileIncome() {
   };
 
   // Build the row that goes into Supabase from the form state
-  const buildEntry = (): Omit<ProfileEntry, "id" | "profile_no" | "created_at" | "updated_at"> => ({
-    user_id: authUserId, // ✅ for RLS
+  const buildEntry = () => ({
+    user_id: authUserId,
     session_id: sessionId,
     ext_date: form.extDate,
     shift: form.shift,
