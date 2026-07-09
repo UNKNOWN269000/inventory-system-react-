@@ -192,6 +192,7 @@ export default function ProfileIncome() {
   const [entries, setEntries] = useState<ProfileEntry[]>([]);
   const [recentData, setRecentData] = useState<RecentEntry[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [loadingEntries, setLoadingEntries] = useState(false);
 
   // Form state
   const [form, setForm] = useState<FormState>(buildInitialForm);
@@ -205,6 +206,7 @@ export default function ProfileIncome() {
   // EFFECTS
   // -----------------------------------------------------------------
   useEffect(() => {
+    loadSessionEntries();
     loadRecentData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -231,6 +233,27 @@ export default function ProfileIncome() {
   // -----------------------------------------------------------------
   // DATA LOADING
   // -----------------------------------------------------------------
+
+  // ✅ NEW: load pending (un-submitted) entries into `entries` state
+  const loadSessionEntries = useCallback(async () => {
+    setLoadingEntries(true);
+    try {
+      const { data, error } = await supabase
+        .from("profile_income")
+        .select("*")
+        .eq("submitted", false)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setEntries(data || []);
+    } catch (err: any) {
+      console.error("Error loading session entries:", err);
+      toast.error("Failed to load pending entries");
+    } finally {
+      setLoadingEntries(false);
+    }
+  }, []);
+
   const loadRecentData = useCallback(async () => {
     setLoadingRecent(true);
     try {
@@ -383,14 +406,12 @@ export default function ProfileIncome() {
     // ----------------------------------------------------------------
     if (editingId) {
       // Optimistic update — replace the existing entry locally
+      const previousEntry = entries.find((e) => e.id === editingId);
       const optimistic: ProfileEntry = {
         ...payload,
         id: editingId,
-        profile_no:
-          entries.find((e) => e.id === editingId)?.profile_no || "Updating…",
-        created_at:
-          entries.find((e) => e.id === editingId)?.created_at ||
-          new Date().toISOString(),
+        profile_no: previousEntry?.profile_no || "Updating…",
+        created_at: previousEntry?.created_at || new Date().toISOString(),
       };
 
       setEntries((prev) =>
@@ -415,12 +436,13 @@ export default function ProfileIncome() {
         }
 
         toast.success("Entry updated");
+        await loadSessionEntries();
         await loadRecentData();
       } catch (err: any) {
         console.error("Update failed:", err);
         toast.error(err.message);
         // Rollback: refetch from DB
-        await loadRecentData();
+        await loadSessionEntries();
       } finally {
         setLoading(false);
         setSubmittingAction(null);
@@ -455,29 +477,18 @@ export default function ProfileIncome() {
 
       // 3) Replace optimistic row with real one
       if (inserted) {
-        setEntries((prev) =>
-          prev.map((e) => (e.id === tempId ? inserted : e))
-        );
+        setEntries((prev) => {
+          const without = prev.filter((e) => e.id !== tempId);
+          if (without.find((e) => e.id === inserted.id)) return without;
+          return [...without, inserted];
+        });
       } else {
-        // .select() returned nothing (RLS) — read back by session_id
-        const { data: fresh, error: fetchErr } = await supabase
-          .from("profile_income")
-          .select("*")
-          .eq("session_id", sessionId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (fetchErr) {
-          console.warn("Read-back failed:", fetchErr);
-        } else if (fresh) {
-          setEntries((prev) =>
-            prev.map((e) => (e.id === tempId ? fresh : e))
-          );
-        }
+        // .select() returned nothing (RLS) — refetch all pending entries
+        await loadSessionEntries();
       }
 
       toast.success("Entry added");
+      await loadSessionEntries();
       await loadRecentData();
     } catch (err: any) {
       console.error("Insert failed:", err);
@@ -507,7 +518,10 @@ export default function ProfileIncome() {
     setShowCloudSync(true);
 
     try {
-      const ids = entries.map((e) => e.id).filter(Boolean) as number[];
+      const ids = entries
+        .map((e) => e.id)
+        .filter((id): id is number => typeof id === "number" && id > 0);
+
       if (ids.length === 0) {
         throw new Error("No persisted entries to submit");
       }
@@ -519,14 +533,14 @@ export default function ProfileIncome() {
 
       if (error) throw error;
 
-      setEntries((prev) => prev.map((e) => ({ ...e, submitted: true })));
+      // Clear local pending list (they're now submitted)
+      setEntries([]);
       await loadRecentData();
 
       setShowCloudSync(false);
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
-        setEntries([]);
       }, 2000);
     } catch (err: any) {
       console.error("Final submit failed:", err);
@@ -569,13 +583,24 @@ export default function ProfileIncome() {
 
   const deleteEntry = useCallback(
     async (id?: number) => {
-      if (!id) return;
+      if (id === undefined || id === null) return;
+
+      // Optimistic local delete
+      const previous = entries;
+      setEntries((prev) => prev.filter((e) => e.id !== id));
+
+      // It's an optimistic (not yet persisted) entry — just remove locally
       if (id < 0) {
-        // It's an optimistic (not yet persisted) entry — just remove locally
-        setEntries((prev) => prev.filter((e) => e.id !== id));
+        toast.success("Entry removed");
         return;
       }
-      if (!confirm("Delete this entry?")) return;
+
+      if (!confirm("Delete this entry?")) {
+        // user cancelled — restore
+        setEntries(previous);
+        return;
+      }
+
       setLoading(true);
       try {
         const { error } = await supabase
@@ -583,16 +608,19 @@ export default function ProfileIncome() {
           .delete()
           .eq("id", id);
         if (error) throw error;
-        setEntries((prev) => prev.filter((e) => e.id !== id));
-        await loadRecentData();
         toast.success("Entry deleted");
+        await loadSessionEntries();
+        await loadRecentData();
       } catch (err: any) {
+        console.error("Delete failed:", err);
         toast.error(err.message);
+        // Rollback
+        await loadSessionEntries();
       } finally {
         setLoading(false);
       }
     },
-    [loadRecentData]
+    [entries, loadSessionEntries, loadRecentData]
   );
 
   // -----------------------------------------------------------------
@@ -684,24 +712,39 @@ export default function ProfileIncome() {
               <div>
                 <h2 className="text-xl font-bold text-white">Pending Records</h2>
                 <p className="text-xs text-zinc-500">
-                  {entries.length === 0
+                  {loadingEntries
+                    ? "Loading…"
+                    : entries.length === 0
                     ? "No records yet"
                     : `${entries.length} profile(s) pending submission`}
                 </p>
               </div>
             </div>
-            {entries.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-400">
-                  {entries.length}
-                </span>
-                <span className="text-xs text-zinc-500">entries</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {entries.length > 0 && (
+                <>
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-400">
+                    {entries.length}
+                  </span>
+                  <span className="text-xs text-zinc-500">entries</span>
+                </>
+              )}
+              <button
+                onClick={loadSessionEntries}
+                disabled={loadingEntries}
+                className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:text-pink-300 disabled:opacity-50"
+              >
+                {loadingEntries ? "Loading…" : "↻ Refresh"}
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-xl">
-            {entries.length === 0 ? (
+            {loadingEntries ? (
+              <div className="py-12 text-center text-zinc-500">
+                Loading pending records…
+              </div>
+            ) : entries.length === 0 ? (
               <div className="py-12 text-center text-zinc-500">
                 No data recorded for this session.
               </div>
