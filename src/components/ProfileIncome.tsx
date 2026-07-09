@@ -16,6 +16,7 @@ type LengthQty = { checked: boolean; qty: string };
 type ProfileEntry = {
   id?: number;
   profile_no?: string;
+  user_id?: string;
   session_id?: string;
   ext_date: string;
   shift: string;
@@ -53,7 +54,6 @@ const SHIFT_OPTIONS = [
   { value: "Day II", label: "Day II" },
 ];
 
-// Must match the DB columns: length_365, length_61, length_65, custom_*
 type LengthKey = "length_365" | "length_61" | "length_65" | "custom";
 
 const LENGTH_OPTIONS: { key: LengthKey; label: string }[] = [
@@ -145,6 +145,7 @@ export default function ProfileIncome() {
   const [loading, setLoading] = useState(false);
   const [recentData, setRecentData] = useState<RecentEntry[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -164,6 +165,9 @@ export default function ProfileIncome() {
 
   // ── Effects ──
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setAuthUserId(data.user?.id ?? null);
+    });
     loadRecentData();
   }, []);
 
@@ -206,17 +210,17 @@ export default function ProfileIncome() {
     p.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // ✅ FIXED: Yield = Out / In × 100 (no off cut)
   const calcYield = () => {
     const inW = parseFloat(form.inWeight) || 0;
     const outW = parseFloat(form.outWeight) || 0;
-    const off = parseFloat(form.offCut) || 0;
-    const netIn = inW - off;
-    if (netIn <= 0) return "0.00";
-    return ((outW / netIn) * 100).toFixed(2);
+    if (inW <= 0) return "0.00";
+    return ((outW / inW) * 100).toFixed(2);
   };
 
   // Build the row that goes into Supabase from the form state
   const buildEntry = (): Omit<ProfileEntry, "id" | "profile_no" | "created_at" | "updated_at"> => ({
+    user_id: authUserId, // ✅ for RLS
     session_id: sessionId,
     ext_date: form.extDate,
     shift: form.shift,
@@ -238,6 +242,10 @@ export default function ProfileIncome() {
   // ── Submit / save / delete ──
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.profile) {
+      alert("Please select a profile from the search list.");
+      return;
+    }
     setLoading(true);
     const payload = buildEntry();
     try {
@@ -692,7 +700,6 @@ export default function ProfileIncome() {
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
                       setShowSearchResults(true);
-                      // Clear hidden form.profile if user edits search
                       if (form.profile && e.target.value !== form.profile) {
                         setForm((f) => ({ ...f, profile: "" }));
                       }
@@ -700,6 +707,7 @@ export default function ProfileIncome() {
                     onFocus={() => setShowSearchResults(true)}
                     placeholder="Search profiles..."
                     autoComplete="off"
+                    required
                     className={glassInput}
                   />
                   {showSearchResults && searchTerm && (
@@ -789,7 +797,7 @@ export default function ProfileIncome() {
                         className="rounded-lg border border-white/10 bg-white/5 p-2.5 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm"
                       />
                       <div className="text-xs text-zinc-500 self-center">
-                        Custom length value & quantity (entered above)
+                        Custom length value (qty entered above)
                       </div>
                     </div>
                   )}
@@ -850,7 +858,7 @@ export default function ProfileIncome() {
                   className="w-full rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm font-bold text-green-400 backdrop-blur-sm"
                 />
                 <p className="mt-1 text-xs text-zinc-500">
-                  Calculated as: Out / (In − Off Cut) × 100
+                  Calculated as: Out / In × 100
                 </p>
               </div>
 
