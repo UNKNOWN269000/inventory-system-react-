@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { SlideMenu } from "@/components/SlideMenu";
 import { MenuButton } from "@/components/MenuButton";
@@ -9,16 +9,14 @@ import { menuStructure } from "@/lib/menu";
 import { supabase } from "@/lib/supabase";
 import { CloudSync } from "@/components/CloudSync";
 import { Dropdown } from "@/components/Dropdown";
-import { toast } from "@/lib/toast";
 
-// =====================================================================
-// TYPES
-// =====================================================================
+// ─── Types ──────────────────────────────────────────────────────────
 type LengthQty = { checked: boolean; qty: string };
 
 type ProfileEntry = {
   id?: number;
   profile_no?: string;
+  session_id?: string;
   ext_date: string;
   shift: string;
   batch_no: string;
@@ -33,9 +31,9 @@ type ProfileEntry = {
   off_cut: string;
   yield_percent: string;
   die_status: string;
-  session_id?: string;
   submitted?: boolean;
   created_at?: string;
+  updated_at?: string;
 };
 
 type RecentEntry = {
@@ -47,40 +45,22 @@ type RecentEntry = {
   created_at: string;
 };
 
-type FormState = {
-  extDate: string;
-  shift: string;
-  batchNo: string;
-  lengths: { [key: string]: LengthQty };
-  customLength: string;
-  profile: string;
-  inWeight: string;
-  outWeight: string;
-  offCut: string;
-  dieStatus: string;
-};
-
-// =====================================================================
-// CONSTANTS
-// =====================================================================
-const LENGTH_OPTIONS = [
-  { value: "3.65", label: "3.65m" },
-  { value: "6.1", label: "6.1m" },
-  { value: "6.5", label: "6.5m" },
-  { value: "other", label: "Other" },
-];
-
-const LENGTH_TO_COLUMN: Record<string, keyof ProfileEntry> = {
-  "3.65": "length_365",
-  "6.1": "length_61",
-  "6.5": "length_65",
-};
-
+// ─── Constants ─────────────────────────────────────────────────────
 const SHIFT_OPTIONS = [
   { value: "Day", label: "Day" },
   { value: "Night", label: "Night" },
   { value: "Day I", label: "Day I" },
   { value: "Day II", label: "Day II" },
+];
+
+// Must match the DB columns: length_365, length_61, length_65, custom_*
+type LengthKey = "length_365" | "length_61" | "length_65" | "custom";
+
+const LENGTH_OPTIONS: { key: LengthKey; label: string }[] = [
+  { key: "length_365", label: "3.65m" },
+  { key: "length_61", label: "6.1m" },
+  { key: "length_65", label: "6.5m" },
+  { key: "custom", label: "Other (custom)" },
 ];
 
 const PROFILES = [
@@ -125,57 +105,34 @@ const PROFILES = [
   "80 SW 14",
 ];
 
-// =====================================================================
-// STYLES
-// =====================================================================
-const glassCard =
-  "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
-const glassInput =
-  "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm transition-colors";
-const glassBtnPrimary =
-  "rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:shadow-pink-500/40 disabled:opacity-50";
-const glassBtnSecondary =
-  "rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:bg-white/10 hover:text-pink-300";
+// ─── Helpers ───────────────────────────────────────────────────────
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
-// =====================================================================
-// HELPERS
-// =====================================================================
-const buildInitialForm = (): FormState => {
-  const today = new Date().toISOString().slice(0, 10);
-  return {
-    extDate: today,
-    shift: "",
-    batchNo: "",
-    lengths: LENGTH_OPTIONS.reduce(
-      (acc, opt) => ({ ...acc, [opt.value]: { checked: false, qty: "" } }),
-      {} as { [k: string]: LengthQty }
-    ),
-    customLength: "",
-    profile: "",
-    inWeight: "",
-    outWeight: "",
-    offCut: "",
-    dieStatus: "",
-  };
-};
+const buildEmptyLengths = (): Record<LengthKey, LengthQty> => ({
+  length_365: { checked: false, qty: "" },
+  length_61: { checked: false, qty: "" },
+  length_65: { checked: false, qty: "" },
+  custom: { checked: false, qty: "" },
+});
 
-function DetailField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
-      <p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p>
-      <p className="mt-1 text-lg text-zinc-200">{value}</p>
-    </div>
-  );
-}
+const buildEmptyForm = () => ({
+  extDate: todayISO(),
+  shift: "",
+  batchNo: "",
+  profile: "",
+  lengths: buildEmptyLengths(),
+  customLengthValue: "",
+  inWeight: "",
+  outWeight: "",
+  offCut: "",
+  dieStatus: "",
+});
 
-// =====================================================================
-// COMPONENT
-// =====================================================================
+// ─── Component ─────────────────────────────────────────────────────
 export default function ProfileIncome() {
-  const { logout, user } = useAuth();
-
-  // UI state
   const [menuOpen, setMenuOpen] = useState(false);
+  const { logout, user } = useAuth();
+  const [entries, setEntries] = useState<ProfileEntry[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -186,40 +143,31 @@ export default function ProfileIncome() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [submittingAction, setSubmittingAction] = useState<string | null>(null);
-
-  // Data state
-  const [entries, setEntries] = useState<ProfileEntry[]>([]);
   const [recentData, setRecentData] = useState<RecentEntry[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
-  const [loadingEntries, setLoadingEntries] = useState(false);
 
-  // Form state
-  const [form, setForm] = useState<FormState>(buildInitialForm);
+  const searchRef = useRef<HTMLDivElement>(null);
 
-  // Session id (stable for the lifetime of this page mount)
-  const sessionId = useRef(
-    `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  ).current;
+  // Stable session id persisted across page reloads
+  const [sessionId] = useState<string>(() => {
+    if (typeof window === "undefined") return "ssr";
+    const k = "profile_income_session_id";
+    let v = window.localStorage.getItem(k);
+    if (!v) {
+      v = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      window.localStorage.setItem(k, v);
+    }
+    return v;
+  });
 
-  // -----------------------------------------------------------------
-  // EFFECTS
-  // -----------------------------------------------------------------
+  const [form, setForm] = useState(buildEmptyForm);
+
+  // ── Effects ──
   useEffect(() => {
-    loadSessionEntries();
     loadRecentData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!editingId && showAddModal) {
-      const today = new Date().toISOString().slice(0, 10);
-      setForm((f) => ({ ...f, extDate: today }));
-    }
-  }, [showAddModal, editingId]);
-
-  // Close search results on outside click
-  const searchRef = useRef<HTMLDivElement>(null);
+  // Close profile search dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -230,44 +178,20 @@ export default function ProfileIncome() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // -----------------------------------------------------------------
-  // DATA LOADING
-  // -----------------------------------------------------------------
-
-  // ✅ NEW: load pending (un-submitted) entries into `entries` state
-  const loadSessionEntries = useCallback(async () => {
-    setLoadingEntries(true);
-    try {
-      const { data, error } = await supabase
-        .from("profile_income")
-        .select("*")
-        .eq("submitted", false)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setEntries(data || []);
-    } catch (err: any) {
-      console.error("Error loading session entries:", err);
-      toast.error("Failed to load pending entries");
-    } finally {
-      setLoadingEntries(false);
-    }
-  }, []);
-
-  const loadRecentData = useCallback(async () => {
+  // ── Data loading ──
+  const loadRecentData = async () => {
     setLoadingRecent(true);
     try {
       const threeDaysAgo = new Date();
       threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-      const cutoff = threeDaysAgo.toISOString().slice(0, 10);
-
+      const threeDaysAgoStr = threeDaysAgo.toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from("profile_income")
         .select("id, profile_no, ext_date, shift, yield_percent, created_at")
-        .gte("ext_date", cutoff)
+        .eq("submitted", true)
+        .gte("ext_date", threeDaysAgoStr)
         .order("created_at", { ascending: false })
         .limit(20);
-
       if (error) throw error;
       setRecentData(data || []);
     } catch (err: any) {
@@ -275,238 +199,79 @@ export default function ProfileIncome() {
     } finally {
       setLoadingRecent(false);
     }
-  }, []);
+  };
 
-  // -----------------------------------------------------------------
-  // DERIVED VALUES
-  // -----------------------------------------------------------------
-  const filteredProfiles = useMemo(
-    () =>
-      PROFILES.filter((p) =>
-        p.toLowerCase().includes(searchTerm.toLowerCase())
-      ),
-    [searchTerm]
+  // ── Derived ──
+  const filteredProfiles = PROFILES.filter((p) =>
+    p.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const yieldPct = useMemo(() => {
+  const calcYield = () => {
     const inW = parseFloat(form.inWeight) || 0;
     const outW = parseFloat(form.outWeight) || 0;
-    if (inW === 0) return "0.00";
-    return ((outW / inW) * 100).toFixed(2);
-  }, [form.inWeight, form.outWeight]);
+    const off = parseFloat(form.offCut) || 0;
+    const netIn = inW - off;
+    if (netIn <= 0) return "0.00";
+    return ((outW / netIn) * 100).toFixed(2);
+  };
 
-  // -----------------------------------------------------------------
-  // MAPPING: form <-> DB
-  // -----------------------------------------------------------------
-  const formToPayload = useCallback(
-    (state: FormState): Omit<ProfileEntry, "id" | "profile_no" | "created_at"> => {
-      const payload: any = {
-        ext_date: state.extDate,
-        shift: state.shift,
-        batch_no: state.batchNo,
-        profile: state.profile,
-        in_weight: state.inWeight,
-        out_weight: state.outWeight,
-        off_cut: state.offCut,
-        yield_percent: yieldPct,
-        die_status: state.dieStatus,
-        session_id: sessionId,
-        submitted: false,
-      };
+  // Build the row that goes into Supabase from the form state
+  const buildEntry = (): Omit<ProfileEntry, "id" | "profile_no" | "created_at" | "updated_at"> => ({
+    session_id: sessionId,
+    ext_date: form.extDate,
+    shift: form.shift,
+    batch_no: form.batchNo,
+    profile: form.profile,
+    length_365: form.lengths.length_365.checked ? (form.lengths.length_365.qty || "0") : null,
+    length_61: form.lengths.length_61.checked ? (form.lengths.length_61.qty || "0") : null,
+    length_65: form.lengths.length_65.checked ? (form.lengths.length_65.qty || "0") : null,
+    custom_length_value: form.lengths.custom.checked ? (form.customLengthValue || null) : null,
+    custom_length_qty: form.lengths.custom.checked ? (form.lengths.custom.qty || "0") : null,
+    in_weight: form.inWeight,
+    out_weight: form.outWeight,
+    off_cut: form.offCut,
+    yield_percent: calcYield(),
+    die_status: form.dieStatus,
+    submitted: false,
+  });
 
-      LENGTH_OPTIONS.filter((o) => o.value !== "other").forEach((o) => {
-        const col = LENGTH_TO_COLUMN[o.value];
-        payload[col] = state.lengths[o.value]?.checked
-          ? state.lengths[o.value].qty || null
-          : null;
-      });
-
-      const other = state.lengths["other"];
-      payload.custom_length_value = other?.checked ? state.customLength : null;
-      payload.custom_length_qty = other?.checked ? other.qty || null : null;
-
-      return payload;
-    },
-    [yieldPct, sessionId]
-  );
-
-  const dbToForm = useCallback((row: ProfileEntry): FormState => {
-    const lengths: { [k: string]: LengthQty } = {};
-    LENGTH_OPTIONS.forEach((o) => {
-      if (o.value === "other") {
-        lengths["other"] = {
-          checked: !!row.custom_length_value,
-          qty: row.custom_length_qty || "",
-        };
-      } else {
-        const col = LENGTH_TO_COLUMN[o.value];
-        const val = (row as any)[col];
-        lengths[o.value] = {
-          checked: val != null && val !== "",
-          qty: val || "",
-        };
-      }
-    });
-
-    return {
-      extDate: row.ext_date,
-      shift: row.shift,
-      batchNo: row.batch_no,
-      profile: row.profile,
-      lengths,
-      customLength: row.custom_length_value || "",
-      inWeight: row.in_weight,
-      outWeight: row.out_weight,
-      offCut: row.off_cut,
-      dieStatus: row.die_status,
-    };
-  }, []);
-
-  // -----------------------------------------------------------------
-  // FORM ACTIONS
-  // -----------------------------------------------------------------
-  const resetForm = useCallback(() => {
-    setForm(buildInitialForm());
-    setSearchTerm("");
-    setEditingId(null);
-  }, []);
-
-  const openAddModal = useCallback(() => {
-    resetForm();
-    setShowAddModal(true);
-  }, [resetForm]);
-
-  const closeAddModal = useCallback(() => {
-    setShowAddModal(false);
-    setEditingId(null);
-    resetForm();
-  }, [resetForm]);
-
-  // -----------------------------------------------------------------
-  // SAVE / EDIT — OPTIMISTIC UI
-  // -----------------------------------------------------------------
+  // ── Submit / save / delete ──
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validation
-    const inW = parseFloat(form.inWeight) || 0;
-    const outW = parseFloat(form.outWeight) || 0;
-    if (inW > 0 && outW > inW) {
-      toast.error("Out weight cannot exceed In weight");
-      return;
-    }
-
-    setSubmittingAction("save");
     setLoading(true);
-
-    const payload = formToPayload(form);
-
-    // ----------------------------------------------------------------
-    // EDIT FLOW
-    // ----------------------------------------------------------------
-    if (editingId) {
-      // Optimistic update — replace the existing entry locally
-      const previousEntry = entries.find((e) => e.id === editingId);
-      const optimistic: ProfileEntry = {
-        ...payload,
-        id: editingId,
-        profile_no: previousEntry?.profile_no || "Updating…",
-        created_at: previousEntry?.created_at || new Date().toISOString(),
-      };
-
-      setEntries((prev) =>
-        prev.map((e) => (e.id === editingId ? optimistic : e))
-      );
-      closeAddModal();
-
-      try {
-        const { data: updated, error } = await supabase
+    const payload = buildEntry();
+    try {
+      if (editingId) {
+        const { data, error } = await supabase
           .from("profile_income")
           .update(payload)
           .eq("id", editingId)
           .select()
-          .maybeSingle();
-
+          .single();
         if (error) throw error;
-
-        if (updated) {
-          setEntries((prev) =>
-            prev.map((e) => (e.id === editingId ? updated : e))
-          );
-        }
-
-        toast.success("Entry updated");
-        await loadSessionEntries();
-        await loadRecentData();
-      } catch (err: any) {
-        console.error("Update failed:", err);
-        toast.error(err.message);
-        // Rollback: refetch from DB
-        await loadSessionEntries();
-      } finally {
-        setLoading(false);
-        setSubmittingAction(null);
-      }
-      return;
-    }
-
-    // ----------------------------------------------------------------
-    // INSERT FLOW (optimistic)
-    // ----------------------------------------------------------------
-    const tempId = -Date.now(); // negative temp id
-    const optimistic: ProfileEntry = {
-      ...payload,
-      id: tempId,
-      profile_no: "Saving…",
-      created_at: new Date().toISOString(),
-    };
-
-    // 1) Show in UI immediately
-    setEntries((prev) => [...prev, optimistic]);
-    closeAddModal();
-
-    try {
-      // 2) Insert into DB
-      const { data: inserted, error: insertErr } = await supabase
-        .from("profile_income")
-        .insert([payload])
-        .select()
-        .maybeSingle();
-
-      if (insertErr) throw insertErr;
-
-      // 3) Replace optimistic row with real one
-      if (inserted) {
-        setEntries((prev) => {
-          const without = prev.filter((e) => e.id !== tempId);
-          if (without.find((e) => e.id === inserted.id)) return without;
-          return [...without, inserted];
-        });
+        setEntries(entries.map((e) => (e.id === editingId ? (data as ProfileEntry) : e)));
       } else {
-        // .select() returned nothing (RLS) — refetch all pending entries
-        await loadSessionEntries();
+        const { data, error } = await supabase
+          .from("profile_income")
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        setEntries([...entries, data as ProfileEntry]);
       }
-
-      toast.success("Entry added");
-      await loadSessionEntries();
-      await loadRecentData();
+      setShowAddModal(false);
+      setEditingId(null);
+      resetForm();
     } catch (err: any) {
-      console.error("Insert failed:", err);
-      toast.error(err.message);
-      // Remove the optimistic row on failure
-      setEntries((prev) => prev.filter((e) => e.id !== tempId));
+      alert(`Error: ${err.message}`);
     } finally {
       setLoading(false);
-      setSubmittingAction(null);
     }
   };
 
-  // -----------------------------------------------------------------
-  // FINAL SUBMIT
-  // -----------------------------------------------------------------
   const finalSubmit = () => {
     if (entries.length === 0) {
-      toast.error("No entries to submit");
+      alert("No entries to submit.");
       return;
     }
     setShowConfirm(true);
@@ -514,127 +279,107 @@ export default function ProfileIncome() {
 
   const executeFinalSubmit = async () => {
     setShowConfirm(false);
-    setSubmittingAction("final");
     setShowCloudSync(true);
-
+    setLoading(true);
     try {
-      const ids = entries
-        .map((e) => e.id)
-        .filter((id): id is number => typeof id === "number" && id > 0);
-
-      if (ids.length === 0) {
-        throw new Error("No persisted entries to submit");
-      }
-
+      const ids = entries.map((e) => e.id).filter(Boolean) as number[];
       const { error } = await supabase
         .from("profile_income")
         .update({ submitted: true })
         .in("id", ids);
-
       if (error) throw error;
-
-      // Clear local pending list (they're now submitted)
-      setEntries([]);
-      await loadRecentData();
-
+      setEntries(entries.map((e) => ({ ...e, submitted: true })));
+      await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
+        setEntries([]);
+        loadRecentData();
       }, 2000);
     } catch (err: any) {
-      console.error("Final submit failed:", err);
-      toast.error(err.message);
+      alert(`Error: ${err.message}`);
       setShowCloudSync(false);
     } finally {
-      setSubmittingAction(null);
+      setLoading(false);
     }
   };
 
-  // -----------------------------------------------------------------
-  // EDIT / VIEW / DELETE
-  // -----------------------------------------------------------------
-  const editEntry = useCallback(
-    (entry: ProfileEntry) => {
-      setEditingId(entry.id ?? null);
-      setForm(dbToForm(entry));
-      setSearchTerm(entry.profile);
-      setShowAddModal(true);
-    },
-    [dbToForm]
-  );
+  const resetForm = () => {
+    setForm(buildEmptyForm());
+    setSearchTerm("");
+  };
 
-  const viewEntryDetails = useCallback(async (id: number) => {
-    try {
-      const { data, error } = await supabase
-        .from("profile_income")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (error) throw error;
-      if (data) {
-        setSelectedEntry(data);
-        setShowDetailModal(true);
-      }
-    } catch (err: any) {
-      toast.error(err.message);
+  const editEntry = (entry: ProfileEntry) => {
+    if (entry.submitted) {
+      alert("This entry is already submitted and cannot be edited.");
+      return;
     }
-  }, []);
+    setEditingId(entry.id ?? null);
+    setForm({
+      extDate: entry.ext_date,
+      shift: entry.shift,
+      batchNo: entry.batch_no,
+      profile: entry.profile,
+      lengths: {
+        length_365: { checked: !!entry.length_365, qty: entry.length_365 || "" },
+        length_61: { checked: !!entry.length_61, qty: entry.length_61 || "" },
+        length_65: { checked: !!entry.length_65, qty: entry.length_65 || "" },
+        custom: { checked: !!entry.custom_length_value, qty: entry.custom_length_qty || "" },
+      },
+      customLengthValue: entry.custom_length_value || "",
+      inWeight: entry.in_weight,
+      outWeight: entry.out_weight,
+      offCut: entry.off_cut,
+      dieStatus: entry.die_status,
+    });
+    setSearchTerm(entry.profile);
+    setShowAddModal(true);
+  };
 
-  const deleteEntry = useCallback(
-    async (id?: number) => {
-      if (id === undefined || id === null) return;
+  const viewEntryDetails = async (id: number) => {
+    const { data, error } = await supabase
+      .from("profile_income")
+      .select("*")
+      .eq("id", id)
+      .single();
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (data) {
+      setSelectedEntry(data as ProfileEntry);
+      setShowDetailModal(true);
+    }
+  };
 
-      // Optimistic local delete
-      const previous = entries;
-      setEntries((prev) => prev.filter((e) => e.id !== id));
+  const deleteEntry = async (id?: number) => {
+    if (!id) return;
+    if (!confirm("Delete this entry?")) return;
+    try {
+      const { error } = await supabase.from("profile_income").delete().eq("id", id);
+      if (error) throw error;
+      setEntries(entries.filter((e) => e.id !== id));
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
 
-      // It's an optimistic (not yet persisted) entry — just remove locally
-      if (id < 0) {
-        toast.success("Entry removed");
-        return;
-      }
+  // ── Style tokens ──
+  const glassCard = "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
+  const glassInput =
+    "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm transition-colors";
+  const glassBtnPrimary =
+    "rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:shadow-pink-500/40 disabled:opacity-50";
+  const glassBtnSecondary =
+    "rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:bg-white/10 hover:text-pink-300";
 
-      if (!confirm("Delete this entry?")) {
-        // user cancelled — restore
-        setEntries(previous);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const { error } = await supabase
-          .from("profile_income")
-          .delete()
-          .eq("id", id);
-        if (error) throw error;
-        toast.success("Entry deleted");
-        await loadSessionEntries();
-        await loadRecentData();
-      } catch (err: any) {
-        console.error("Delete failed:", err);
-        toast.error(err.message);
-        // Rollback
-        await loadSessionEntries();
-      } finally {
-        setLoading(false);
-      }
-    },
-    [entries, loadSessionEntries, loadRecentData]
-  );
-
-  // -----------------------------------------------------------------
-  // RENDER
-  // -----------------------------------------------------------------
+  // ── Render ──
   return (
     <div className="min-h-screen text-zinc-100">
-      <SlideMenu
-        nodes={menuStructure}
-        isOpen={menuOpen}
-        onClose={() => setMenuOpen(false)}
-      />
+      <SlideMenu nodes={menuStructure} isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      {/* HEADER */}
+      {/* Header */}
       <header className="border-b border-zinc-800">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
@@ -644,9 +389,7 @@ export default function ProfileIncome() {
                 U
               </div>
               <div>
-                <p className="text-sm font-semibold tracking-wide text-white">
-                  Ultra Aluminum
-                </p>
+                <p className="text-sm font-semibold tracking-wide text-white">Ultra Aluminum</p>
                 <p className="text-xs text-zinc-500">Pvt Ltd</p>
               </div>
             </Link>
@@ -664,7 +407,7 @@ export default function ProfileIncome() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Breadcrumbs */}
+        {/* Breadcrumb */}
         <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
           <Link href="/home" className="hover:text-zinc-300">Home</Link>
           <span className="text-zinc-700">/</span>
@@ -673,16 +416,20 @@ export default function ProfileIncome() {
           <span className="text-pink-300">Profile Income</span>
         </nav>
 
-        {/* Page Header */}
-        <div className={`relative mt-4 overflow-hidden p-8 ${glassCard}`}>
-          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-purple-500/5 pointer-events-none" />
+        {/* Title */}
+        <div className={`mt-4 overflow-hidden p-8 ${glassCard}`}>
+          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-purple-500/5" />
           <div className="relative flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold text-white">Profile Income</h1>
               <h3 className="mt-2 text-lg text-pink-400">Extrusion Department</h3>
             </div>
             <button
-              onClick={openAddModal}
+              onClick={() => {
+                resetForm();
+                setEditingId(null);
+                setShowAddModal(true);
+              }}
               disabled={loading}
               className={glassBtnPrimary}
             >
@@ -691,20 +438,12 @@ export default function ProfileIncome() {
           </div>
         </div>
 
-        {/* Pending Records */}
+        {/* Pending records */}
         <div className={`mt-6 p-6 ${glassCard}`}>
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
               <div className="grid h-10 w-10 place-items-center rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-pink-400"
-                >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
@@ -712,42 +451,25 @@ export default function ProfileIncome() {
               <div>
                 <h2 className="text-xl font-bold text-white">Pending Records</h2>
                 <p className="text-xs text-zinc-500">
-                  {loadingEntries
-                    ? "Loading…"
-                    : entries.length === 0
+                  {entries.length === 0
                     ? "No records yet"
                     : `${entries.length} profile(s) pending submission`}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {entries.length > 0 && (
-                <>
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-400">
-                    {entries.length}
-                  </span>
-                  <span className="text-xs text-zinc-500">entries</span>
-                </>
-              )}
-              <button
-                onClick={loadSessionEntries}
-                disabled={loadingEntries}
-                className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:text-pink-300 disabled:opacity-50"
-              >
-                {loadingEntries ? "Loading…" : "↻ Refresh"}
-              </button>
-            </div>
+            {entries.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-400">
+                  {entries.length}
+                </span>
+                <span className="text-xs text-zinc-500">entries</span>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-xl">
-            {loadingEntries ? (
-              <div className="py-12 text-center text-zinc-500">
-                Loading pending records…
-              </div>
-            ) : entries.length === 0 ? (
-              <div className="py-12 text-center text-zinc-500">
-                No data recorded for this session.
-              </div>
+            {entries.length === 0 ? (
+              <div className="py-12 text-center text-zinc-500">No data recorded for this session.</div>
             ) : (
               <div className="space-y-2">
                 {entries.map((entry) => (
@@ -757,51 +479,35 @@ export default function ProfileIncome() {
                   >
                     <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">
-                          Profile No
-                        </p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Profile No</p>
                         <p className="mt-1 font-semibold text-pink-400">
                           {entry.profile_no || "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">
-                          Profile
-                        </p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Profile</p>
                         <p className="mt-1 text-zinc-200">{entry.profile}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">
-                          In / Out (kg)
-                        </p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">In / Out (kg)</p>
                         <p className="mt-1 text-zinc-200">
                           {entry.in_weight} / {entry.out_weight}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">
-                          Yield (%)
-                        </p>
-                        <p className="mt-1 font-bold text-pink-400">
-                          {entry.yield_percent}
-                        </p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Yield (%)</p>
+                        <p className="mt-1 font-bold text-pink-400">{entry.yield_percent}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">
-                          Batch
-                        </p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Batch</p>
                         <p className="mt-1 text-zinc-200">{entry.batch_no}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">
-                          Die Status
-                        </p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Die Status</p>
                         <p className="mt-1 text-zinc-200">{entry.die_status}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">
-                          Date / Shift
-                        </p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Date / Shift</p>
                         <p className="mt-1 text-zinc-200">
                           {entry.ext_date} / {entry.shift}
                         </p>
@@ -830,29 +536,19 @@ export default function ProfileIncome() {
           </div>
         </div>
 
-        {/* Recent Data */}
+        {/* Recent data */}
         <div className={`mt-6 p-6 ${glassCard}`}>
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
               <div className="grid h-10 w-10 place-items-center rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-pink-400"
-                >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
                   <path d="M3 3h18v18H3z" />
                   <path d="M3 9h18M9 21V9" />
                 </svg>
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white">Recent Added Data</h2>
-                <p className="text-xs text-zinc-500">
-                  Last 3 days records from database
-                </p>
+                <p className="text-xs text-zinc-500">Last 3 days records from database</p>
               </div>
             </div>
             <button
@@ -867,9 +563,7 @@ export default function ProfileIncome() {
           {loadingRecent ? (
             <div className="py-8 text-center text-zinc-500">Loading recent data…</div>
           ) : recentData.length === 0 ? (
-            <div className="py-8 text-center text-zinc-500">
-              No records found in the last 3 days.
-            </div>
+            <div className="py-8 text-center text-zinc-500">No records found in the last 3 days.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -889,14 +583,10 @@ export default function ProfileIncome() {
                       className="border-b border-white/5 transition hover:bg-white/10 cursor-pointer"
                       onClick={() => viewEntryDetails(row.id)}
                     >
-                      <td className="px-3 py-2 font-semibold text-pink-400">
-                        {row.profile_no}
-                      </td>
+                      <td className="px-3 py-2 font-semibold text-pink-400">{row.profile_no}</td>
                       <td className="px-3 py-2 text-zinc-300">{row.ext_date}</td>
                       <td className="px-3 py-2 text-zinc-300">{row.shift}</td>
-                      <td className="px-3 py-2 font-bold text-pink-400">
-                        {row.yield_percent}%
-                      </td>
+                      <td className="px-3 py-2 font-bold text-pink-400">{row.yield_percent}%</td>
                       <td className="px-3 py-2 text-right">
                         <button
                           onClick={(e) => {
@@ -917,48 +607,42 @@ export default function ProfileIncome() {
         </div>
       </div>
 
-      {/* Sticky footer with final submit */}
+      {/* Sticky submit bar */}
       {entries.length > 0 && (
         <div className="sticky bottom-0 z-10 border-t border-white/10 bg-white/10 px-6 py-4 shadow-2xl backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between">
             <div className="text-sm text-zinc-400">
-              <span className="font-semibold text-white">{entries.length}</span>{" "}
-              profile(s) ready
+              <span className="font-semibold text-white">{entries.length}</span> profile(s) ready
             </div>
-            <button
-              onClick={finalSubmit}
-              disabled={loading}
-              className={glassBtnPrimary}
-            >
+            <button onClick={finalSubmit} disabled={loading} className={glassBtnPrimary}>
               ✓ Final Submit Production
             </button>
           </div>
         </div>
       )}
 
-      {/* Backdrop */}
-      {(showAddModal || showConfirm || showDetailModal) && (
+      {/* Modal backdrops */}
+      {showAddModal && (
         <div
           className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
           onClick={() => {
-            if (showAddModal) closeAddModal();
-            if (showDetailModal) setShowDetailModal(false);
-            if (showConfirm) setShowConfirm(false);
+            setShowAddModal(false);
+            setEditingId(null);
+            resetForm();
           }}
         />
       )}
 
-      {/* ADD / EDIT MODAL */}
+      {/* Add/Edit modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
-          <div
-            className={`w-full max-w-3xl overflow-hidden ${glassCard} max-h-[90vh] flex flex-col`}
-          >
+          <div className={`w-full max-w-3xl overflow-hidden ${glassCard} max-h-[90vh] flex flex-col`}>
             <div className="border-b border-white/10 bg-gradient-to-r from-pink-500/10 to-purple-500/10 px-6 py-4 backdrop-blur-xl">
               <h3 className="text-xl font-semibold text-white">
                 {editingId ? "Edit Profile Entry" : "Profile Production Entry"}
               </h3>
             </div>
+
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -973,6 +657,7 @@ export default function ProfileIncome() {
                     className={glassInput}
                   />
                 </div>
+
                 <div>
                   <Dropdown
                     label="Shift"
@@ -983,6 +668,7 @@ export default function ProfileIncome() {
                     options={SHIFT_OPTIONS}
                   />
                 </div>
+
                 <div>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                     Billet Batch No
@@ -995,6 +681,7 @@ export default function ProfileIncome() {
                     className={glassInput}
                   />
                 </div>
+
                 <div className="relative sm:col-span-2" ref={searchRef}>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                     Profile (Search)
@@ -1005,19 +692,20 @@ export default function ProfileIncome() {
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
                       setShowSearchResults(true);
+                      // Clear hidden form.profile if user edits search
+                      if (form.profile && e.target.value !== form.profile) {
+                        setForm((f) => ({ ...f, profile: "" }));
+                      }
                     }}
                     onFocus={() => setShowSearchResults(true)}
                     placeholder="Search profiles..."
                     autoComplete="off"
-                    required
                     className={glassInput}
                   />
                   {showSearchResults && searchTerm && (
                     <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl">
                       {filteredProfiles.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-zinc-500">
-                          No matches
-                        </div>
+                        <div className="px-3 py-2 text-sm text-zinc-500">No matches</div>
                       ) : (
                         filteredProfiles.map((p) => (
                           <div
@@ -1045,18 +733,18 @@ export default function ProfileIncome() {
                 </label>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm space-y-2">
                   {LENGTH_OPTIONS.map((opt) => (
-                    <div key={opt.value} className="flex items-center gap-3">
-                      <label className="flex w-24 cursor-pointer items-center gap-2 text-xs text-white/70">
+                    <div key={opt.key} className="flex items-center gap-3">
+                      <label className="flex w-28 cursor-pointer items-center gap-2 text-xs text-white/70">
                         <input
                           type="checkbox"
-                          checked={form.lengths[opt.value]?.checked || false}
+                          checked={form.lengths[opt.key].checked}
                           onChange={(e) =>
                             setForm({
                               ...form,
                               lengths: {
                                 ...form.lengths,
-                                [opt.value]: {
-                                  ...form.lengths[opt.value],
+                                [opt.key]: {
+                                  ...form.lengths[opt.key],
                                   checked: e.target.checked,
                                 },
                               },
@@ -1068,42 +756,48 @@ export default function ProfileIncome() {
                       </label>
                       <input
                         type="number"
-                        value={form.lengths[opt.value]?.qty || ""}
+                        value={form.lengths[opt.key].qty}
                         onChange={(e) =>
                           setForm({
                             ...form,
                             lengths: {
                               ...form.lengths,
-                              [opt.value]: {
-                                ...form.lengths[opt.value],
+                              [opt.key]: {
+                                ...form.lengths[opt.key],
                                 qty: e.target.value,
                               },
                             },
                           })
                         }
                         placeholder="Qty"
-                        disabled={!form.lengths[opt.value]?.checked}
+                        disabled={!form.lengths[opt.key].checked}
                         className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm disabled:opacity-40"
                       />
                     </div>
                   ))}
-                  {form.lengths["other"]?.checked && (
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={form.customLength}
-                      onChange={(e) =>
-                        setForm({ ...form, customLength: e.target.value })
-                      }
-                      placeholder="Custom length (m)"
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 p-2.5 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm"
-                    />
+
+                  {form.lengths.custom.checked && (
+                    <div className="grid gap-2 sm:grid-cols-2 pt-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={form.customLengthValue}
+                        onChange={(e) =>
+                          setForm({ ...form, customLengthValue: e.target.value })
+                        }
+                        placeholder="Custom length (m)"
+                        className="rounded-lg border border-white/10 bg-white/5 p-2.5 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm"
+                      />
+                      <div className="text-xs text-zinc-500 self-center">
+                        Custom length value & quantity (entered above)
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
 
               {/* Weights */}
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="mt-4 grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                     In (kg)
@@ -1130,20 +824,19 @@ export default function ProfileIncome() {
                     className={glassInput}
                   />
                 </div>
-              </div>
-
-              <div className="mt-4">
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  Off Cut (kg)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.offCut}
-                  onChange={(e) => setForm({ ...form, offCut: e.target.value })}
-                  required
-                  className={glassInput}
-                />
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                    Off Cut (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.offCut}
+                    onChange={(e) => setForm({ ...form, offCut: e.target.value })}
+                    required
+                    className={glassInput}
+                  />
+                </div>
               </div>
 
               <div className="mt-4">
@@ -1152,10 +845,13 @@ export default function ProfileIncome() {
                 </label>
                 <input
                   type="text"
-                  value={yieldPct}
+                  value={calcYield()}
                   readOnly
                   className="w-full rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm font-bold text-green-400 backdrop-blur-sm"
                 />
+                <p className="mt-1 text-xs text-zinc-500">
+                  Calculated as: Out / (In − Off Cut) × 100
+                </p>
               </div>
 
               <div className="mt-4">
@@ -1173,20 +869,16 @@ export default function ProfileIncome() {
 
               <div className="sticky bottom-0 mt-6 -mx-6 -mb-6 border-t border-white/5 bg-zinc-950 px-6 py-4 backdrop-blur-xl">
                 <div className="flex gap-3">
-                  <button
-                    type="submit"
-                    disabled={loading || submittingAction === "save"}
-                    className={glassBtnPrimary}
-                  >
-                    {submittingAction === "save"
-                      ? "Saving…"
-                      : editingId
-                      ? "Update Entry"
-                      : "Add Entry"}
+                  <button type="submit" disabled={loading} className={glassBtnPrimary}>
+                    {editingId ? "Update Entry" : "Add Entry"}
                   </button>
                   <button
                     type="button"
-                    onClick={closeAddModal}
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setEditingId(null);
+                      resetForm();
+                    }}
                     className={glassBtnSecondary}
                   >
                     Cancel
@@ -1198,29 +890,24 @@ export default function ProfileIncome() {
         </div>
       )}
 
-      {/* CONFIRM FINAL SUBMIT */}
+      {/* Confirm modal */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-white/10 shadow-2xl backdrop-blur-2xl">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowConfirm(false)}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-white/10 shadow-2xl backdrop-blur-2xl">
             <div className="p-6 text-center">
               <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-pink-500/20">
-                <svg
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-pink-400"
-                >
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
                   <circle cx="12" cy="12" r="10" />
                   <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
                 </svg>
               </div>
               <h3 className="mb-2 text-2xl font-bold text-white">Are you sure?</h3>
               <p className="text-sm text-zinc-400">
-                This will finalize all recent submissions for processing. This
-                action cannot be undone.
+                This will finalize all recent submissions for processing. This action cannot be undone.
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 border-t border-white/10 p-6">
@@ -1248,31 +935,23 @@ export default function ProfileIncome() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 backdrop-blur-xl">
           <div className="rounded-3xl border border-white/10 bg-white/10 p-10 text-center shadow-2xl backdrop-blur-2xl">
             <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full bg-pink-500/20">
-              <svg
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="text-pink-400"
-              >
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-pink-400">
-              Submission Successful
-            </h2>
-            <p className="mt-2 text-sm text-zinc-500">
-              Production data has been recorded.
-            </p>
+            <h2 className="text-2xl font-bold text-pink-400">Submission Successful</h2>
+            <p className="mt-2 text-sm text-zinc-500">Production data has been recorded.</p>
           </div>
         </div>
       )}
 
-      {/* DETAIL MODAL */}
+      {/* Detail modal */}
       {showDetailModal && selectedEntry && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowDetailModal(false)}
+          />
           <div className={`relative w-full max-w-3xl overflow-hidden ${glassCard}`}>
             <div className="border-b border-white/10 bg-gradient-to-r from-pink-500/10 to-purple-500/10 px-6 py-4 backdrop-blur-xl">
               <div className="flex items-center justify-between">
@@ -1280,16 +959,8 @@ export default function ProfileIncome() {
                 <button
                   onClick={() => setShowDetailModal(false)}
                   className="rounded-md p-1 text-zinc-400 transition hover:bg-white/10 hover:text-white"
-                  aria-label="Close"
                 >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M18 6L6 18M6 6l12 12" />
                   </svg>
                 </button>
@@ -1299,30 +970,43 @@ export default function ProfileIncome() {
             <div className="max-h-[70vh] overflow-y-auto p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm sm:col-span-2">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">
-                    Profile No
-                  </p>
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Profile No</p>
                   <p className="mt-1 text-lg font-bold text-pink-400">
-                    {selectedEntry.profile_no}
+                    {selectedEntry.profile_no || "—"}
                   </p>
                 </div>
-                <DetailField label="Profile" value={selectedEntry.profile} />
-                <DetailField
-                  label="Date / Shift"
-                  value={`${selectedEntry.ext_date} / ${selectedEntry.shift}`}
-                />
-                <DetailField label="Batch No" value={selectedEntry.batch_no} />
-                <DetailField label="Die Status" value={selectedEntry.die_status} />
-                <DetailField label="In Weight (kg)" value={selectedEntry.in_weight} />
-                <DetailField
-                  label="Out Weight (kg)"
-                  value={selectedEntry.out_weight}
-                />
-                <DetailField label="Off Cut (kg)" value={selectedEntry.off_cut} />
-                <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 backdrop-blur-sm">
-                  <p className="text-xs uppercase tracking-wider text-green-400">
-                    Yield (%)
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Profile</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.profile}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Date / Shift</p>
+                  <p className="mt-1 text-lg text-zinc-200">
+                    {selectedEntry.ext_date} / {selectedEntry.shift}
                   </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Batch No</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.batch_no}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Die Status</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.die_status}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">In Weight (kg)</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.in_weight}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Out Weight (kg)</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.out_weight}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Off Cut (kg)</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.off_cut}</p>
+                </div>
+                <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 backdrop-blur-sm sm:col-span-2">
+                  <p className="text-xs uppercase tracking-wider text-green-400">Yield (%)</p>
                   <p className="mt-1 text-2xl font-bold text-green-400">
                     {selectedEntry.yield_percent}%
                   </p>
@@ -1333,45 +1017,51 @@ export default function ProfileIncome() {
                     Lengths & Quantities
                   </p>
                   <div className="mt-2 space-y-1">
-                    {LENGTH_OPTIONS.map((opt) => {
-                      if (opt.value === "other") {
-                        if (!selectedEntry.custom_length_value) return null;
-                        return (
-                          <div
-                            key={opt.value}
-                            className="flex justify-between text-sm"
-                          >
-                            <span className="text-zinc-400">
-                              Other ({selectedEntry.custom_length_value} m)
-                            </span>
-                            <span className="text-pink-400 font-semibold">
-                              {selectedEntry.custom_length_qty || 0} pcs
-                            </span>
-                          </div>
-                        );
-                      }
-                      const col = LENGTH_TO_COLUMN[opt.value];
-                      const v = (selectedEntry as any)[col];
-                      if (!v) return null;
-                      return (
-                        <div
-                          key={opt.value}
-                          className="flex justify-between text-sm"
-                        >
-                          <span className="text-zinc-400">{opt.label}</span>
-                          <span className="text-pink-400 font-semibold">
-                            {v} pcs
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {selectedEntry.length_365 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">3.65m</span>
+                        <span className="text-pink-400 font-semibold">
+                          {selectedEntry.length_365} pcs
+                        </span>
+                      </div>
+                    )}
+                    {selectedEntry.length_61 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">6.1m</span>
+                        <span className="text-pink-400 font-semibold">
+                          {selectedEntry.length_61} pcs
+                        </span>
+                      </div>
+                    )}
+                    {selectedEntry.length_65 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">6.5m</span>
+                        <span className="text-pink-400 font-semibold">
+                          {selectedEntry.length_65} pcs
+                        </span>
+                      </div>
+                    )}
+                    {selectedEntry.custom_length_value && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">
+                          Custom: {selectedEntry.custom_length_value}m
+                        </span>
+                        <span className="text-pink-400 font-semibold">
+                          {selectedEntry.custom_length_qty} pcs
+                        </span>
+                      </div>
+                    )}
+                    {!selectedEntry.length_365 &&
+                      !selectedEntry.length_61 &&
+                      !selectedEntry.length_65 &&
+                      !selectedEntry.custom_length_value && (
+                        <div className="text-sm text-zinc-500">No lengths recorded</div>
+                      )}
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm sm:col-span-2">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">
-                    Created At
-                  </p>
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Created At</p>
                   <p className="mt-1 text-sm text-zinc-400">
                     {selectedEntry.created_at
                       ? new Date(selectedEntry.created_at).toLocaleString()
@@ -1381,15 +1071,17 @@ export default function ProfileIncome() {
               </div>
 
               <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowDetailModal(false);
-                    editEntry(selectedEntry);
-                  }}
-                  className="flex-1 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:shadow-pink-500/40"
-                >
-                  Edit This Entry
-                </button>
+                {!selectedEntry.submitted && (
+                  <button
+                    onClick={() => {
+                      setShowDetailModal(false);
+                      editEntry(selectedEntry);
+                    }}
+                    className="flex-1 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:shadow-pink-500/40"
+                  >
+                    Edit This Entry
+                  </button>
+                )}
                 <button
                   onClick={() => setShowDetailModal(false)}
                   className="flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:bg-white/10 hover:text-pink-300"
