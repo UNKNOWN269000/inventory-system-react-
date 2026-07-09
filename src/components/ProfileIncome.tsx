@@ -9,7 +9,7 @@ import { menuStructure } from "@/lib/menu";
 import { supabase } from "@/lib/supabase";
 import { CloudSync } from "@/components/CloudSync";
 import { Dropdown } from "@/components/Dropdown";
-import { toast } from "sonner"; // optional, see note below
+import { toast } from "@/lib/toast"; // <- shim, not sonner
 
 // =====================================================================
 // TYPES (mirror the SQL schema exactly)
@@ -133,7 +133,7 @@ const PROFILES = [
 ];
 
 // =====================================================================
-// STYLE CONSTANTS (kept here for simplicity; consider extracting)
+// STYLE CONSTANTS
 // =====================================================================
 const glassCard =
   "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
@@ -204,6 +204,7 @@ export default function ProfileIncome() {
   // -----------------------------------------------------------------
   useEffect(() => {
     loadRecentData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -246,7 +247,6 @@ export default function ProfileIncome() {
       setRecentData(data || []);
     } catch (err: any) {
       console.error("Error loading recent data:", err);
-      // toast?.error?.(err.message); // if using sonner
     } finally {
       setLoadingRecent(false);
     }
@@ -257,7 +257,9 @@ export default function ProfileIncome() {
   // -----------------------------------------------------------------
   const filteredProfiles = useMemo(
     () =>
-      PROFILES.filter((p) => p.toLowerCase().includes(searchTerm.toLowerCase())),
+      PROFILES.filter((p) =>
+        p.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
     [searchTerm]
   );
 
@@ -272,7 +274,9 @@ export default function ProfileIncome() {
   // MAPPING: form <-> DB
   // -----------------------------------------------------------------
   const formToPayload = useCallback(
-    (state: FormState): Omit<ProfileEntry, "id" | "profile_no" | "created_at"> => {
+    (
+      state: FormState
+    ): Omit<ProfileEntry, "id" | "profile_no" | "created_at"> => {
       const payload: any = {
         ext_date: state.extDate,
         shift: state.shift,
@@ -288,14 +292,12 @@ export default function ProfileIncome() {
       };
 
       // Standard length columns
-      LENGTH_OPTIONS
-        .filter((o) => o.value !== "other")
-        .forEach((o) => {
-          const col = LENGTH_TO_COLUMN[o.value];
-          payload[col] = state.lengths[o.value]?.checked
-            ? state.lengths[o.value].qty || null
-            : null;
-        });
+      LENGTH_OPTIONS.filter((o) => o.value !== "other").forEach((o) => {
+        const col = LENGTH_TO_COLUMN[o.value];
+        payload[col] = state.lengths[o.value]?.checked
+          ? state.lengths[o.value].qty || null
+          : null;
+      });
 
       // Custom "other"
       const other = state.lengths["other"];
@@ -365,12 +367,11 @@ export default function ProfileIncome() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
+    // Validation: out weight cannot exceed in weight
     const inW = parseFloat(form.inWeight) || 0;
     const outW = parseFloat(form.outWeight) || 0;
-    if (outW > inW) {
-      toast?.error?.("Out weight cannot exceed In weight");
-      // alert("Out weight cannot exceed In weight");
+    if (inW > 0 && outW > inW) {
+      toast.error("Out weight cannot exceed In weight");
       return;
     }
 
@@ -399,10 +400,10 @@ export default function ProfileIncome() {
       }
       closeAddModal();
       await loadRecentData();
-      toast?.success?.(editingId ? "Entry updated" : "Entry added");
+      toast.success(editingId ? "Entry updated" : "Entry added");
     } catch (err: any) {
       console.error(err);
-      toast?.error?.(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
       setSubmittingAction(null);
@@ -414,7 +415,7 @@ export default function ProfileIncome() {
   // -----------------------------------------------------------------
   const finalSubmit = () => {
     if (entries.length === 0) {
-      toast?.error?.("No entries to submit");
+      toast.error("No entries to submit");
       return;
     }
     setShowConfirm(true);
@@ -444,7 +445,7 @@ export default function ProfileIncome() {
       }, 2000);
     } catch (err: any) {
       console.error(err);
-      toast?.error?.(err.message);
+      toast.error(err.message);
       setShowCloudSync(false);
     } finally {
       setSubmittingAction(null);
@@ -464,25 +465,22 @@ export default function ProfileIncome() {
     [dbToForm]
   );
 
-  const viewEntryDetails = useCallback(
-    async (id: number) => {
-      try {
-        const { data, error } = await supabase
-          .from("profile_income")
-          .select("*")
-          .eq("id", id)
-          .single();
-        if (error) throw error;
-        if (data) {
-          setSelectedEntry(data);
-          setShowDetailModal(true);
-        }
-      } catch (err: any) {
-        toast?.error?.(err.message);
+  const viewEntryDetails = useCallback(async (id: number) => {
+    try {
+      const { data, error } = await supabase
+        .from("profile_income")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error) throw error;
+      if (data) {
+        setSelectedEntry(data);
+        setShowDetailModal(true);
       }
-    },
-    []
-  );
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }, []);
 
   const deleteEntry = useCallback(
     async (id?: number) => {
@@ -497,9 +495,9 @@ export default function ProfileIncome() {
         if (error) throw error;
         setEntries((prev) => prev.filter((e) => e.id !== id));
         await loadRecentData();
-        toast?.success?.("Entry deleted");
+        toast.success("Entry deleted");
       } catch (err: any) {
-        toast?.error?.(err.message);
+        toast.error(err.message);
       } finally {
         setLoading(false);
       }
@@ -512,7 +510,11 @@ export default function ProfileIncome() {
   // -----------------------------------------------------------------
   return (
     <div className="min-h-screen text-zinc-100">
-      <SlideMenu nodes={menuStructure} isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+      <SlideMenu
+        nodes={menuStructure}
+        isOpen={menuOpen}
+        onClose={() => setMenuOpen(false)}
+      />
 
       {/* HEADER */}
       <header className="border-b border-zinc-800">
@@ -520,9 +522,13 @@ export default function ProfileIncome() {
           <div className="flex items-center gap-3">
             <MenuButton onClick={() => setMenuOpen(true)} />
             <Link href="/home" className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 font-bold text-white shadow-lg shadow-pink-500/20">U</div>
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 font-bold text-white shadow-lg shadow-pink-500/20">
+                U
+              </div>
               <div>
-                <p className="text-sm font-semibold tracking-wide text-white">Ultra Aluminum</p>
+                <p className="text-sm font-semibold tracking-wide text-white">
+                  Ultra Aluminum
+                </p>
                 <p className="text-xs text-zinc-500">Pvt Ltd</p>
               </div>
             </Link>
@@ -542,9 +548,13 @@ export default function ProfileIncome() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         {/* Breadcrumbs */}
         <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
-          <Link href="/home" className="hover:text-zinc-300">Home</Link>
+          <Link href="/home" className="hover:text-zinc-300">
+            Home
+          </Link>
           <span className="text-zinc-700">/</span>
-          <Link href="/home/extrusion" className="hover:text-zinc-300">Extrusion</Link>
+          <Link href="/home/extrusion" className="hover:text-zinc-300">
+            Extrusion
+          </Link>
           <span className="text-zinc-700">/</span>
           <span className="text-pink-300">Profile Income</span>
         </nav>
@@ -572,7 +582,15 @@ export default function ProfileIncome() {
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
               <div className="grid h-10 w-10 place-items-center rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-pink-400"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
@@ -610,35 +628,51 @@ export default function ProfileIncome() {
                   >
                     <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">Profile No</p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">
+                          Profile No
+                        </p>
                         <p className="mt-1 font-semibold text-pink-400">
                           {entry.profile_no || "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">Profile</p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">
+                          Profile
+                        </p>
                         <p className="mt-1 text-zinc-200">{entry.profile}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">In / Out (kg)</p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">
+                          In / Out (kg)
+                        </p>
                         <p className="mt-1 text-zinc-200">
                           {entry.in_weight} / {entry.out_weight}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">Yield (%)</p>
-                        <p className="mt-1 font-bold text-pink-400">{entry.yield_percent}</p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">
+                          Yield (%)
+                        </p>
+                        <p className="mt-1 font-bold text-pink-400">
+                          {entry.yield_percent}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">Batch</p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">
+                          Batch
+                        </p>
                         <p className="mt-1 text-zinc-200">{entry.batch_no}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">Die Status</p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">
+                          Die Status
+                        </p>
                         <p className="mt-1 text-zinc-200">{entry.die_status}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wider text-zinc-500">Date / Shift</p>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">
+                          Date / Shift
+                        </p>
                         <p className="mt-1 text-zinc-200">
                           {entry.ext_date} / {entry.shift}
                         </p>
@@ -672,14 +706,24 @@ export default function ProfileIncome() {
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
               <div className="grid h-10 w-10 place-items-center rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-pink-400"
+                >
                   <path d="M3 3h18v18H3z" />
                   <path d="M3 9h18M9 21V9" />
                 </svg>
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white">Recent Added Data</h2>
-                <p className="text-xs text-zinc-500">Last 3 days records from database</p>
+                <p className="text-xs text-zinc-500">
+                  Last 3 days records from database
+                </p>
               </div>
             </div>
             <button
@@ -694,7 +738,9 @@ export default function ProfileIncome() {
           {loadingRecent ? (
             <div className="py-8 text-center text-zinc-500">Loading recent data…</div>
           ) : recentData.length === 0 ? (
-            <div className="py-8 text-center text-zinc-500">No records found in the last 3 days.</div>
+            <div className="py-8 text-center text-zinc-500">
+              No records found in the last 3 days.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -714,10 +760,14 @@ export default function ProfileIncome() {
                       className="border-b border-white/5 transition hover:bg-white/10 cursor-pointer"
                       onClick={() => viewEntryDetails(row.id)}
                     >
-                      <td className="px-3 py-2 font-semibold text-pink-400">{row.profile_no}</td>
+                      <td className="px-3 py-2 font-semibold text-pink-400">
+                        {row.profile_no}
+                      </td>
                       <td className="px-3 py-2 text-zinc-300">{row.ext_date}</td>
                       <td className="px-3 py-2 text-zinc-300">{row.shift}</td>
-                      <td className="px-3 py-2 font-bold text-pink-400">{row.yield_percent}%</td>
+                      <td className="px-3 py-2 font-bold text-pink-400">
+                        {row.yield_percent}%
+                      </td>
                       <td className="px-3 py-2 text-right">
                         <button
                           onClick={(e) => {
@@ -743,7 +793,8 @@ export default function ProfileIncome() {
         <div className="sticky bottom-0 z-10 border-t border-white/10 bg-white/10 px-6 py-4 shadow-2xl backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between">
             <div className="text-sm text-zinc-400">
-              <span className="font-semibold text-white">{entries.length}</span> profile(s) ready
+              <span className="font-semibold text-white">{entries.length}</span>{" "}
+              profile(s) ready
             </div>
             <button
               onClick={finalSubmit}
@@ -771,7 +822,9 @@ export default function ProfileIncome() {
       {/* ADD / EDIT MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
-          <div className={`w-full max-w-3xl overflow-hidden ${glassCard} max-h-[90vh] flex flex-col`}>
+          <div
+            className={`w-full max-w-3xl overflow-hidden ${glassCard} max-h-[90vh] flex flex-col`}
+          >
             <div className="border-b border-white/10 bg-gradient-to-r from-pink-500/10 to-purple-500/10 px-6 py-4 backdrop-blur-xl">
               <h3 className="text-xl font-semibold text-white">
                 {editingId ? "Edit Profile Entry" : "Profile Production Entry"}
@@ -833,7 +886,9 @@ export default function ProfileIncome() {
                   {showSearchResults && searchTerm && (
                     <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl">
                       {filteredProfiles.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-zinc-500">No matches</div>
+                        <div className="px-3 py-2 text-sm text-zinc-500">
+                          No matches
+                        </div>
                       ) : (
                         filteredProfiles.map((p) => (
                           <div
@@ -908,7 +963,9 @@ export default function ProfileIncome() {
                       type="number"
                       step="0.01"
                       value={form.customLength}
-                      onChange={(e) => setForm({ ...form, customLength: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, customLength: e.target.value })
+                      }
                       placeholder="Custom length (m)"
                       className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 p-2.5 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm"
                     />
@@ -1018,14 +1075,23 @@ export default function ProfileIncome() {
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-white/10 shadow-2xl backdrop-blur-2xl">
             <div className="p-6 text-center">
               <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-pink-500/20">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
+                <svg
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-pink-400"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
                 </svg>
               </div>
               <h3 className="mb-2 text-2xl font-bold text-white">Are you sure?</h3>
               <p className="text-sm text-zinc-400">
-                This will finalize all recent submissions for processing. This action cannot be undone.
+                This will finalize all recent submissions for processing. This
+                action cannot be undone.
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 border-t border-white/10 p-6">
@@ -1053,12 +1119,24 @@ export default function ProfileIncome() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 backdrop-blur-xl">
           <div className="rounded-3xl border border-white/10 bg-white/10 p-10 text-center shadow-2xl backdrop-blur-2xl">
             <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full bg-pink-500/20">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-pink-400"
+              >
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-pink-400">Submission Successful</h2>
-            <p className="mt-2 text-sm text-zinc-500">Production data has been recorded.</p>
+            <h2 className="text-2xl font-bold text-pink-400">
+              Submission Successful
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500">
+              Production data has been recorded.
+            </p>
           </div>
         </div>
       )}
@@ -1075,7 +1153,14 @@ export default function ProfileIncome() {
                   className="rounded-md p-1 text-zinc-400 transition hover:bg-white/10 hover:text-white"
                   aria-label="Close"
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="M18 6L6 18M6 6l12 12" />
                   </svg>
                 </button>
@@ -1085,20 +1170,30 @@ export default function ProfileIncome() {
             <div className="max-h-[70vh] overflow-y-auto p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm sm:col-span-2">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">Profile No</p>
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">
+                    Profile No
+                  </p>
                   <p className="mt-1 text-lg font-bold text-pink-400">
                     {selectedEntry.profile_no}
                   </p>
                 </div>
                 <DetailField label="Profile" value={selectedEntry.profile} />
-                <DetailField label="Date / Shift" value={`${selectedEntry.ext_date} / ${selectedEntry.shift}`} />
+                <DetailField
+                  label="Date / Shift"
+                  value={`${selectedEntry.ext_date} / ${selectedEntry.shift}`}
+                />
                 <DetailField label="Batch No" value={selectedEntry.batch_no} />
                 <DetailField label="Die Status" value={selectedEntry.die_status} />
                 <DetailField label="In Weight (kg)" value={selectedEntry.in_weight} />
-                <DetailField label="Out Weight (kg)" value={selectedEntry.out_weight} />
+                <DetailField
+                  label="Out Weight (kg)"
+                  value={selectedEntry.out_weight}
+                />
                 <DetailField label="Off Cut (kg)" value={selectedEntry.off_cut} />
                 <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 backdrop-blur-sm">
-                  <p className="text-xs uppercase tracking-wider text-green-400">Yield (%)</p>
+                  <p className="text-xs uppercase tracking-wider text-green-400">
+                    Yield (%)
+                  </p>
                   <p className="mt-1 text-2xl font-bold text-green-400">
                     {selectedEntry.yield_percent}%
                   </p>
@@ -1106,31 +1201,39 @@ export default function ProfileIncome() {
 
                 {/* Lengths */}
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm sm:col-span-2">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">Lengths & Quantities</p>
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">
+                    Lengths & Quantities
+                  </p>
                   <div className="mt-2 space-y-1">
                     {LENGTH_OPTIONS.map((opt) => {
-                      let qty: string | null = null;
                       if (opt.value === "other") {
-                        qty = selectedEntry.custom_length_qty;
                         if (!selectedEntry.custom_length_value) return null;
                         return (
-                          <div key={opt.value} className="flex justify-between text-sm">
+                          <div
+                            key={opt.value}
+                            className="flex justify-between text-sm"
+                          >
                             <span className="text-zinc-400">
                               Other ({selectedEntry.custom_length_value} m)
                             </span>
-                            <span className="text-pink-400 font-semibold">{qty || 0} pcs</span>
+                            <span className="text-pink-400 font-semibold">
+                              {selectedEntry.custom_length_qty || 0} pcs
+                            </span>
                           </div>
                         );
-                      } else {
-                        const col = LENGTH_TO_COLUMN[opt.value];
-                        const v = (selectedEntry as any)[col];
-                        if (!v) return null;
-                        qty = v;
                       }
+                      const col = LENGTH_TO_COLUMN[opt.value];
+                      const v = (selectedEntry as any)[col];
+                      if (!v) return null;
                       return (
-                        <div key={opt.value} className="flex justify-between text-sm">
+                        <div
+                          key={opt.value}
+                          className="flex justify-between text-sm"
+                        >
                           <span className="text-zinc-400">{opt.label}</span>
-                          <span className="text-pink-400 font-semibold">{qty} pcs</span>
+                          <span className="text-pink-400 font-semibold">
+                            {v} pcs
+                          </span>
                         </div>
                       );
                     })}
@@ -1138,7 +1241,9 @@ export default function ProfileIncome() {
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm sm:col-span-2">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">Created At</p>
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">
+                    Created At
+                  </p>
                   <p className="mt-1 text-sm text-zinc-400">
                     {selectedEntry.created_at
                       ? new Date(selectedEntry.created_at).toLocaleString()
@@ -1173,7 +1278,7 @@ export default function ProfileIncome() {
 }
 
 // =====================================================================
-// HELPER COMPONENTS (kept inline for now — extract later if needed)
+// HELPERS
 // =====================================================================
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
