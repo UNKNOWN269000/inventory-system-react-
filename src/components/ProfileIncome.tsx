@@ -170,7 +170,7 @@ export default function ProfileIncome() {
       setAuthUserId(data.user?.id ?? null);
     });
     loadRecentData();
-    loadPendingEntries(); // ✅ NEW: load unsaved entries from DB
+    loadPendingEntries();
   }, []);
 
   // Close profile search dropdown on outside click
@@ -207,7 +207,6 @@ export default function ProfileIncome() {
     }
   };
 
-  // ✅ NEW: Load pending (submitted = false) entries from DB
   const loadPendingEntries = async () => {
     setLoadingPending(true);
     try {
@@ -254,7 +253,6 @@ export default function ProfileIncome() {
     off_cut: form.offCut,
     yield_percent: calcYield(),
     die_status: form.dieStatus,
-    submitted: false,
   });
 
   // ── Submit / save / delete ──
@@ -275,11 +273,28 @@ export default function ProfileIncome() {
           .select()
           .single();
         if (error) throw error;
-        setEntries(entries.map((e) => (e.id === editingId ? (data as ProfileEntry) : e)));
+        // Update local list if pending
+        setEntries((prev) =>
+          prev.map((e) => (e.id === editingId ? (data as ProfileEntry) : e))
+        );
+        // Update recent list if it contains this id
+        setRecentData((prev) =>
+          prev.map((e) =>
+            e.id === editingId
+              ? {
+                  ...e,
+                  profile_no: data.profile_no ?? e.profile_no,
+                  ext_date: data.ext_date,
+                  shift: data.shift,
+                  yield_percent: data.yield_percent,
+                }
+              : e
+          )
+        );
       } else {
         const { data, error } = await supabase
           .from("profile_income")
-          .insert([payload])
+          .insert([{ ...payload, submitted: false }])
           .select()
           .single();
         if (error) throw error;
@@ -288,7 +303,8 @@ export default function ProfileIncome() {
       setShowAddModal(false);
       setEditingId(null);
       resetForm();
-      await loadPendingEntries(); // ✅ refresh from DB
+      // Reload both lists to keep DB and UI in sync
+      await Promise.all([loadPendingEntries(), loadRecentData()]);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     } finally {
@@ -315,8 +331,7 @@ export default function ProfileIncome() {
         .update({ submitted: true })
         .in("id", ids);
       if (error) throw error;
-      await loadPendingEntries(); // ✅ refresh — should now be empty
-      await loadRecentData();
+      await Promise.all([loadPendingEntries(), loadRecentData()]);
       await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
       setShowSuccess(true);
@@ -336,11 +351,8 @@ export default function ProfileIncome() {
     setSearchTerm("");
   };
 
+  // ✅ CHANGED: now allows editing any entry (pending OR submitted)
   const editEntry = (entry: ProfileEntry) => {
-    if (entry.submitted) {
-      alert("This entry is already submitted and cannot be edited.");
-      return;
-    }
     setEditingId(entry.id ?? null);
     setForm({
       extDate: entry.ext_date,
@@ -361,6 +373,26 @@ export default function ProfileIncome() {
     });
     setSearchTerm(entry.profile);
     setShowAddModal(true);
+  };
+
+  // ✅ NEW: load a row from recent table and open the editor
+  const editRecentEntry = async (id: number) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("profile_income")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error) throw error;
+      if (data) {
+        editEntry(data as ProfileEntry);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const viewEntryDetails = async (id: number) => {
@@ -386,7 +418,7 @@ export default function ProfileIncome() {
       const { error } = await supabase.from("profile_income").delete().eq("id", id);
       if (error) throw error;
       setEntries(entries.filter((e) => e.id !== id));
-      await loadPendingEntries(); // ✅ refresh
+      await loadPendingEntries();
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     }
@@ -610,7 +642,7 @@ export default function ProfileIncome() {
                     <th className="px-3 py-2">Date</th>
                     <th className="px-3 py-2">Shift</th>
                     <th className="px-3 py-2">Yield (%)</th>
-                    <th className="px-3 py-2 text-right">Action</th>
+                    <th className="px-3 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -625,15 +657,27 @@ export default function ProfileIncome() {
                       <td className="px-3 py-2 text-zinc-300">{row.shift}</td>
                       <td className="px-3 py-2 font-bold text-pink-400">{row.yield_percent}%</td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            viewEntryDetails(row.id);
-                          }}
-                          className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 transition hover:border-pink-500 hover:text-pink-300"
-                        >
-                          View
-                        </button>
+                        <div className="inline-flex gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              viewEntryDetails(row.id);
+                            }}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 transition hover:border-pink-500 hover:text-pink-300"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              editRecentEntry(row.id);
+                            }}
+                            disabled={loading}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 transition hover:border-pink-500 hover:text-pink-300 disabled:opacity-50"
+                          >
+                            Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1108,17 +1152,15 @@ export default function ProfileIncome() {
               </div>
 
               <div className="mt-6 flex gap-3">
-                {!selectedEntry.submitted && (
-                  <button
-                    onClick={() => {
-                      setShowDetailModal(false);
-                      editEntry(selectedEntry);
-                    }}
-                    className="flex-1 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:shadow-pink-500/40"
-                  >
-                    Edit This Entry
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    setShowDetailModal(false);
+                    editEntry(selectedEntry);
+                  }}
+                  className="flex-1 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:shadow-pink-500/40"
+                >
+                  Edit This Entry
+                </button>
                 <button
                   onClick={() => setShowDetailModal(false)}
                   className="flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:bg-white/10 hover:text-pink-300"
