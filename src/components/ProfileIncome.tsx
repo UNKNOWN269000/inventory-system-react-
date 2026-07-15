@@ -58,11 +58,9 @@ const SHIFT_OPTIONS = [
 
 // ✅ NEW: Type options
 const TYPE_OPTIONS = [
-  { value: "Standard", label: "Standard" },
-  { value: "Custom", label: "Custom" },
-  { value: "Sample", label: "Sample" },
-  { value: "Rework", label: "Rework" },
-  { value: "Trial", label: "Trial" },
+  { value: "ULR", label: "ULR" },
+  { value: "PRM", label: "PRM" },
+  { value: "ULR PRM", label: "ULR PRM" },
 ];
 
 type LengthKey = "length_365" | "length_61" | "length_65" | "custom";
@@ -891,6 +889,21 @@ export default function ProfileIncome() {
                 </div>
               </div>
 
+              {/* ✅ NEW: Unit Weight input */}
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  Unit Weight
+                </label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={form.unitWeight}
+                  onChange={(e) => setForm({ ...form, unitWeight: e.target.value })}
+                  placeholder="e.g. 0.450"
+                  className={glassInput}
+                />
+              </div>
+
               <div className="mt-4 grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
@@ -957,21 +970,6 @@ export default function ProfileIncome() {
                   value={form.dieStatus}
                   onChange={(e) => setForm({ ...form, dieStatus: e.target.value })}
                   required
-                  className={glassInput}
-                />
-              </div>
-
-              {/* ✅ NEW: Unit Weight input */}
-              <div className="mt-4">
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  Unit Weight (kg/m or kg/pc)
-                </label>
-                <input
-                  type="number"
-                  step="0.001"
-                  value={form.unitWeight}
-                  onChange={(e) => setForm({ ...form, unitWeight: e.target.value })}
-                  placeholder="e.g. 0.450"
                   className={glassInput}
                 />
               </div>
