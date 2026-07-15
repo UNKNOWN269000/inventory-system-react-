@@ -32,6 +32,8 @@ type ProfileEntry = {
   off_cut: string;
   yield_percent: string;
   die_status: string;
+  type?: string | null;
+  unit_Weight?: string | null;  // ✅ NEW: matches DB column name (case-sensitive)
   submitted?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -52,6 +54,15 @@ const SHIFT_OPTIONS = [
   { value: "Night", label: "Night" },
   { value: "Day I", label: "Day I" },
   { value: "Day II", label: "Day II" },
+];
+
+// ✅ NEW: Type options
+const TYPE_OPTIONS = [
+  { value: "Standard", label: "Standard" },
+  { value: "Custom", label: "Custom" },
+  { value: "Sample", label: "Sample" },
+  { value: "Rework", label: "Rework" },
+  { value: "Trial", label: "Trial" },
 ];
 
 type LengthKey = "length_365" | "length_61" | "length_65" | "custom";
@@ -126,6 +137,8 @@ const buildEmptyForm = () => ({
   outWeight: "",
   offCut: "",
   dieStatus: "",
+  type: "",            // ✅ NEW
+  unitWeight: "",      // ✅ NEW (camelCase in code, maps to "unit_Weight" in DB)
 });
 
 // ─── Component ─────────────────────────────────────────────────────
@@ -150,7 +163,6 @@ export default function ProfileIncome() {
 
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Stable session id persisted across page reloads
   const [sessionId] = useState<string>(() => {
     if (typeof window === "undefined") return "ssr";
     const k = "profile_income_session_id";
@@ -164,7 +176,6 @@ export default function ProfileIncome() {
 
   const [form, setForm] = useState(buildEmptyForm);
 
-  // ── Effects ──
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setAuthUserId(data.user?.id ?? null);
@@ -173,7 +184,6 @@ export default function ProfileIncome() {
     loadPendingEntries();
   }, []);
 
-  // Close profile search dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -184,7 +194,6 @@ export default function ProfileIncome() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ── Data loading ──
   const loadRecentData = async () => {
     setLoadingRecent(true);
     try {
@@ -224,7 +233,6 @@ export default function ProfileIncome() {
     }
   };
 
-  // ── Derived ──
   const filteredProfiles = PROFILES.filter((p) =>
     p.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -253,9 +261,10 @@ export default function ProfileIncome() {
     off_cut: form.offCut,
     yield_percent: calcYield(),
     die_status: form.dieStatus,
+    type: form.type || null,                  // ✅ NEW
+    unit_Weight: form.unitWeight || null,     // ✅ NEW (DB column name with underscore)
   });
 
-  // ── Submit / save / delete ──
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.profile) {
@@ -273,11 +282,9 @@ export default function ProfileIncome() {
           .select()
           .single();
         if (error) throw error;
-        // Update local list if pending
         setEntries((prev) =>
           prev.map((e) => (e.id === editingId ? (data as ProfileEntry) : e))
         );
-        // Update recent list if it contains this id
         setRecentData((prev) =>
           prev.map((e) =>
             e.id === editingId
@@ -303,7 +310,6 @@ export default function ProfileIncome() {
       setShowAddModal(false);
       setEditingId(null);
       resetForm();
-      // Reload both lists to keep DB and UI in sync
       await Promise.all([loadPendingEntries(), loadRecentData()]);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
@@ -351,7 +357,6 @@ export default function ProfileIncome() {
     setSearchTerm("");
   };
 
-  // ✅ CHANGED: now allows editing any entry (pending OR submitted)
   const editEntry = (entry: ProfileEntry) => {
     setEditingId(entry.id ?? null);
     setForm({
@@ -370,12 +375,13 @@ export default function ProfileIncome() {
       outWeight: entry.out_weight,
       offCut: entry.off_cut,
       dieStatus: entry.die_status,
+      type: entry.type || "",                  // ✅ NEW
+      unitWeight: entry.unit_Weight || "",     // ✅ NEW
     });
     setSearchTerm(entry.profile);
     setShowAddModal(true);
   };
 
-  // ✅ NEW: load a row from recent table and open the editor
   const editRecentEntry = async (id: number) => {
     setLoading(true);
     try {
@@ -424,7 +430,6 @@ export default function ProfileIncome() {
     }
   };
 
-  // ── Style tokens ──
   const glassCard = "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
   const glassInput =
     "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-pink-500 backdrop-blur-sm transition-colors";
@@ -433,12 +438,10 @@ export default function ProfileIncome() {
   const glassBtnSecondary =
     "rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-zinc-300 backdrop-blur-sm transition hover:border-pink-400 hover:bg-white/10 hover:text-pink-300";
 
-  // ── Render ──
   return (
     <div className="min-h-screen text-zinc-100">
       <SlideMenu nodes={menuStructure} isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      {/* Header */}
       <header className="border-b border-zinc-800">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
@@ -466,7 +469,6 @@ export default function ProfileIncome() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Breadcrumb */}
         <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
           <Link href="/home" className="hover:text-zinc-300">Home</Link>
           <span className="text-zinc-700">/</span>
@@ -475,7 +477,6 @@ export default function ProfileIncome() {
           <span className="text-pink-300">Profile Income</span>
         </nav>
 
-        {/* Title */}
         <div className={`mt-4 overflow-hidden p-8 ${glassCard}`}>
           <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-purple-500/5" />
           <div className="relative flex items-center justify-between">
@@ -497,7 +498,6 @@ export default function ProfileIncome() {
           </div>
         </div>
 
-        {/* Pending records */}
         <div className={`mt-6 p-6 ${glassCard}`}>
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
@@ -546,7 +546,7 @@ export default function ProfileIncome() {
                     key={entry.id}
                     className="rounded-lg border border-white/10 bg-white/5 p-4 shadow-lg backdrop-blur-xl transition hover:border-pink-500/40 hover:bg-white/10"
                   >
-                    <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500">Profile No</p>
                         <p className="mt-1 font-semibold text-pink-400">
@@ -556,6 +556,10 @@ export default function ProfileIncome() {
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500">Profile</p>
                         <p className="mt-1 text-zinc-200">{entry.profile}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Type</p> {/* ✅ NEW */}
+                        <p className="mt-1 text-zinc-200">{entry.type || "—"}</p>
                       </div>
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500">In / Out (kg)</p>
@@ -570,6 +574,10 @@ export default function ProfileIncome() {
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500">Batch</p>
                         <p className="mt-1 text-zinc-200">{entry.batch_no}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500">Unit Wt</p> {/* ✅ NEW */}
+                        <p className="mt-1 text-zinc-200">{entry.unit_Weight || "—"}</p>
                       </div>
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500">Die Status</p>
@@ -605,7 +613,6 @@ export default function ProfileIncome() {
           </div>
         </div>
 
-        {/* Recent data */}
         <div className={`mt-6 p-6 ${glassCard}`}>
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
@@ -688,7 +695,6 @@ export default function ProfileIncome() {
         </div>
       </div>
 
-      {/* Sticky submit bar */}
       {entries.length > 0 && (
         <div className="sticky bottom-0 z-10 border-t border-white/10 bg-white/10 px-6 py-4 shadow-2xl backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between">
@@ -702,7 +708,6 @@ export default function ProfileIncome() {
         </div>
       )}
 
-      {/* Modal backdrops */}
       {showAddModal && (
         <div
           className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
@@ -714,7 +719,6 @@ export default function ProfileIncome() {
         />
       )}
 
-      {/* Add/Edit modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
           <div className={`w-full max-w-3xl overflow-hidden ${glassCard} max-h-[90vh] flex flex-col`}>
@@ -763,6 +767,17 @@ export default function ProfileIncome() {
                   />
                 </div>
 
+                {/* ✅ NEW: Type dropdown */}
+                <div>
+                  <Dropdown
+                    label="Type"
+                    value={form.type}
+                    onChange={(v) => setForm({ ...form, type: v })}
+                    placeholder="Select Type"
+                    options={TYPE_OPTIONS}
+                  />
+                </div>
+
                 <div className="relative sm:col-span-2" ref={searchRef}>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                     Profile (Search)
@@ -807,7 +822,6 @@ export default function ProfileIncome() {
                 </div>
               </div>
 
-              {/* Lengths */}
               <div className="mt-4">
                 <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                   Lengths & Quantities
@@ -877,7 +891,6 @@ export default function ProfileIncome() {
                 </div>
               </div>
 
-              {/* Weights */}
               <div className="mt-4 grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
@@ -948,6 +961,21 @@ export default function ProfileIncome() {
                 />
               </div>
 
+              {/* ✅ NEW: Unit Weight input */}
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  Unit Weight (kg/m or kg/pc)
+                </label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={form.unitWeight}
+                  onChange={(e) => setForm({ ...form, unitWeight: e.target.value })}
+                  placeholder="e.g. 0.450"
+                  className={glassInput}
+                />
+              </div>
+
               <div className="sticky bottom-0 mt-6 -mx-6 -mb-6 border-t border-white/5 bg-zinc-950 px-6 py-4 backdrop-blur-xl">
                 <div className="flex gap-3">
                   <button type="submit" disabled={loading} className={glassBtnPrimary}>
@@ -971,7 +999,6 @@ export default function ProfileIncome() {
         </div>
       )}
 
-      {/* Confirm modal */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
           <div
@@ -1026,7 +1053,6 @@ export default function ProfileIncome() {
         </div>
       )}
 
-      {/* Detail modal */}
       {showDetailModal && selectedEntry && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
           <div
@@ -1060,6 +1086,10 @@ export default function ProfileIncome() {
                   <p className="text-xs uppercase tracking-wider text-zinc-500">Profile</p>
                   <p className="mt-1 text-lg text-zinc-200">{selectedEntry.profile}</p>
                 </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm"> {/* ✅ NEW */}
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Type</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.type || "—"}</p>
+                </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
                   <p className="text-xs uppercase tracking-wider text-zinc-500">Date / Shift</p>
                   <p className="mt-1 text-lg text-zinc-200">
@@ -1073,6 +1103,10 @@ export default function ProfileIncome() {
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
                   <p className="text-xs uppercase tracking-wider text-zinc-500">Die Status</p>
                   <p className="mt-1 text-lg text-zinc-200">{selectedEntry.die_status}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm"> {/* ✅ NEW */}
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Unit Weight</p>
+                  <p className="mt-1 text-lg text-zinc-200">{selectedEntry.unit_Weight || "—"}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
                   <p className="text-xs uppercase tracking-wider text-zinc-500">In Weight (kg)</p>
