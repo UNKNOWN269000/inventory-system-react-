@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { SlideMenu } from "@/components/SlideMenu";
 import { MenuButton } from "@/components/MenuButton";
@@ -65,6 +65,9 @@ export default function AnodizingProduction() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingRecentId, setEditingRecentId] = useState<number | null>(null);
 
+  // Ref for closing dropdown on outside click
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
   const [form, setForm] = useState({
     anodizingDate: "",
     barBindingDate: "",
@@ -80,6 +83,20 @@ export default function AnodizingProduction() {
     weightBarQty: "",
     oneMicron: "",
   });
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(e.target as Node)
+      ) {
+        setShowProfileDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     loadRecentData();
@@ -103,17 +120,29 @@ export default function AnodizingProduction() {
 
   const loadRecentData = async () => {
     try {
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-      const threeDaysAgoStr = threeDaysAgo.toISOString().slice(0, 10);
+      // Get local date for day-before-yesterday at 00:00:00
+      const now = new Date();
+      const dayBeforeYesterday = new Date(now);
+      dayBeforeYesterday.setDate(now.getDate() - 2);
+      dayBeforeYesterday.setHours(0, 0, 0, 0);
+
+      // Get tomorrow at 23:59:59 to include all of today
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      tomorrow.setHours(23, 59, 59, 999);
+
+      // Format as YYYY-MM-DD for date column comparison
+      const fromDate = dayBeforeYesterday.toISOString().slice(0, 10);
+      const toDate = tomorrow.toISOString().slice(0, 10);
 
       const { data, error } = await supabase
         .from("anodizing_production")
         .select("*")
         .eq("submitted", true)
-        .gte("anodizing_date", threeDaysAgoStr)
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .gte("anodizing_date", fromDate)
+        .lte("anodizing_date", toDate)
+        .order("anodizing_date", { ascending: false })
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setRecentData(data || []);
@@ -122,9 +151,12 @@ export default function AnodizingProduction() {
     }
   };
 
-  const filteredProfiles = PROFILES.filter((p) =>
-    p.toLowerCase().includes(profileSearch.toLowerCase())
-  );
+  // Filter profiles - show all if search is empty, otherwise filter
+  const filteredProfiles = profileSearch
+    ? PROFILES.filter((p) =>
+        p.toLowerCase().includes(profileSearch.toLowerCase())
+      )
+    : PROFILES;
 
   const buildRecord = () => ({
     anodizing_date: form.anodizingDate,
@@ -143,10 +175,31 @@ export default function AnodizingProduction() {
     operator: user ?? undefined,
   });
 
+  const getModalTitle = () => {
+    if (editingRecentId !== null) return "Edit Submitted Record";
+    if (editingIndex !== null) return "Edit Pending Record";
+    return "New Production Record";
+  };
+
   const openModal = () => {
     const today = new Date().toISOString().slice(0, 10);
-    setForm({ ...form, anodizingDate: today, barBindingDate: today });
+    setForm({
+      anodizingDate: today,
+      barBindingDate: today,
+      type: "",
+      surface: "",
+      profile: "",
+      rackNo: "",
+      length: "",
+      rackWiseQty: "",
+      totalProductionQty: "",
+      premiumPackingQty: "",
+      nonBrandPackingQty: "",
+      weightBarQty: "",
+      oneMicron: "",
+    });
     setProfileSearch("");
+    setShowProfileDropdown(false);
     setEditingIndex(null);
     setEditingRecentId(null);
     setShowModal(true);
@@ -171,7 +224,9 @@ export default function AnodizingProduction() {
     });
     setEditingIndex(index);
     setEditingRecentId(null);
-    setProfileSearch(record.profile);
+    // Set profile search to show selected profile in input
+    setProfileSearch(record.profile || "");
+    setShowProfileDropdown(false);
     setShowModal(true);
   };
 
@@ -192,8 +247,9 @@ export default function AnodizingProduction() {
       oneMicron: record.one_micron || "",
     });
     setEditingIndex(null);
-    setEditingRecentId(record.id || null);
-    setProfileSearch(record.profile);
+    setEditingRecentId(record.id ?? null);
+    setProfileSearch(record.profile || "");
+    setShowProfileDropdown(false);
     setShowModal(true);
   };
 
@@ -201,13 +257,20 @@ export default function AnodizingProduction() {
     setShowModal(false);
     setEditingIndex(null);
     setEditingRecentId(null);
+    setProfileSearch("");
+    setShowProfileDropdown(false);
   };
 
-  const handleAddToPending = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const record = { ...buildRecord(), submitted: false };
+  const handleAddToPending = async () => {
+    // Basic validation
+    if (!form.anodizingDate || !form.profile || !form.type || !form.surface) {
+      alert("Please fill in required fields: Date, Profile, Type, and Surface.");
+      return;
+    }
 
+    const record = { ...buildRecord(), submitted: false };
     setLoading(true);
+
     try {
       if (editingIndex !== null && pendingRecords[editingIndex]?.id) {
         const { error } = await supabase
@@ -216,7 +279,6 @@ export default function AnodizingProduction() {
           .eq("id", pendingRecords[editingIndex].id);
 
         if (error) throw error;
-        setEditingIndex(null);
       } else {
         const { data, error } = await supabase
           .from("anodizing_production")
@@ -225,10 +287,10 @@ export default function AnodizingProduction() {
           .single();
 
         if (error) throw error;
-        setPendingRecords([...pendingRecords, data]);
       }
+
       closeModal();
-      loadPendingFromDB();
+      await loadPendingFromDB();
     } catch (err: any) {
       console.error("Error:", err);
       alert(`Error: ${err.message}`);
@@ -264,8 +326,6 @@ export default function AnodizingProduction() {
       setTimeout(() => {
         setShowSuccess(false);
         setPendingRecords([]);
-        setEditingRecentId(null);
-        closeModal();
         loadRecentData();
         loadPendingFromDB();
       }, 2000);
@@ -280,6 +340,12 @@ export default function AnodizingProduction() {
 
   const handleUpdateRecent = async () => {
     if (editingRecentId === null) return;
+
+    // Basic validation
+    if (!form.anodizingDate || !form.profile || !form.type || !form.surface) {
+      alert("Please fill in required fields: Date, Profile, Type, and Surface.");
+      return;
+    }
 
     setShowCloudSync(true);
     setLoading(true);
@@ -299,7 +365,6 @@ export default function AnodizingProduction() {
 
       setTimeout(() => {
         setShowSuccess(false);
-        setEditingRecentId(null);
         closeModal();
         loadRecentData();
       }, 2000);
@@ -313,6 +378,8 @@ export default function AnodizingProduction() {
   };
 
   const handleDeletePending = async (index: number) => {
+    if (!confirm("Remove this pending record?")) return;
+
     const record = pendingRecords[index];
     if (record?.id) {
       try {
@@ -327,47 +394,102 @@ export default function AnodizingProduction() {
         return;
       }
     }
-    setPendingRecords(pendingRecords.filter((_, i) => i !== index));
+    setPendingRecords((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const glassCard = "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
-  const glassInput = "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500 backdrop-blur-sm transition-colors";
-  const glassInputGreen = "w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-bold text-emerald-400 outline-none backdrop-blur-sm transition-colors";
-  const glassBtnPrimary = "rounded-lg bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-2.5 text-sm font-bold text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50";
+  // Helper: format date label for grouping
+  const getDateLabel = (dateStr: string) => {
+    if (!dateStr) return dateStr;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const dayBeforeYesterday = new Date(today);
+    dayBeforeYesterday.setDate(today.getDate() - 2);
+
+    const date = new Date(dateStr + "T00:00:00");
+    if (date.toDateString() === today.toDateString()) return "Today";
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+    if (date.toDateString() === dayBeforeYesterday.toDateString())
+      return "Day Before Yesterday";
+    return dateStr;
+  };
+
+  // Group recent data by anodizing_date
+  const groupedRecentData = recentData.reduce(
+    (acc: Record<string, any[]>, row) => {
+      const label = getDateLabel(row.anodizing_date);
+      if (!acc[label]) acc[label] = [];
+      acc[label].push(row);
+      return acc;
+    },
+    {}
+  );
+
+  const glassCard =
+    "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
+  const glassInput =
+    "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500 backdrop-blur-sm transition-colors";
+  const glassInputGreen =
+    "w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-bold text-emerald-400 outline-none backdrop-blur-sm transition-colors";
+  const glassBtnPrimary =
+    "rounded-lg bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-2.5 text-sm font-bold text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50";
 
   return (
     <div className="min-h-screen text-zinc-100">
-      <SlideMenu nodes={menuStructure} isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+      <SlideMenu
+        nodes={menuStructure}
+        isOpen={menuOpen}
+        onClose={() => setMenuOpen(false)}
+      />
+
+      {/* Header */}
       <header className="border-b border-zinc-800">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <MenuButton onClick={() => setMenuOpen(true)} />
             <Link href="/home" className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 font-bold text-black shadow-lg shadow-emerald-500/20">U</div>
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 font-bold text-black shadow-lg shadow-emerald-500/20">
+                U
+              </div>
               <div>
-                <p className="text-sm font-semibold tracking-wide text-white">Ultra Aluminum</p>
+                <p className="text-sm font-semibold tracking-wide text-white">
+                  Ultra Aluminum
+                </p>
                 <p className="text-xs text-zinc-500">Pvt Ltd</p>
               </div>
             </Link>
           </div>
           <div className="flex items-center gap-3">
-            {user && <span className="text-xs text-zinc-500">User: {user}</span>}
-            <button onClick={logout} className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-emerald-400 hover:text-emerald-300">Logout</button>
+            {user && (
+              <span className="text-xs text-zinc-500">User: {user}</span>
+            )}
+            <button
+              onClick={logout}
+              className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-emerald-400 hover:text-emerald-300"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
+        {/* Breadcrumb */}
         <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
-          <Link href="/home" className="hover:text-zinc-300">Home</Link>
+          <Link href="/home" className="hover:text-zinc-300">
+            Home
+          </Link>
           <span className="text-zinc-700">/</span>
-          <Link href="/home/anodizing" className="hover:text-zinc-300">Anodizing</Link>
+          <Link href="/home/anodizing" className="hover:text-zinc-300">
+            Anodizing
+          </Link>
           <span className="text-zinc-700">/</span>
           <span className="text-emerald-300">Production</span>
         </nav>
 
-        {/* Header */}
-        <div className={`mt-4 overflow-hidden p-8 ${glassCard}`}>
+        {/* Page Header */}
+        <div className={`relative mt-4 overflow-hidden p-8 ${glassCard}`}>
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-green-500/5" />
           <div className="relative flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -375,8 +497,12 @@ export default function AnodizingProduction() {
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
                 Production Module
               </div>
-              <h1 className="mt-3 text-3xl font-bold text-white">Anodizing Production</h1>
-              <p className="text-sm text-zinc-400">Record anodizing production data</p>
+              <h1 className="mt-3 text-3xl font-bold text-white">
+                Anodizing Production
+              </h1>
+              <p className="text-sm text-zinc-400">
+                Record anodizing production data
+              </p>
             </div>
             <button onClick={openModal} className={glassBtnPrimary}>
               + Add Production Record
@@ -387,8 +513,10 @@ export default function AnodizingProduction() {
         {/* Pending Records */}
         {pendingRecords.length > 0 && (
           <div className={`mt-6 overflow-hidden ${glassCard}`}>
-            <div className="border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Pending Records</h2>
+            <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
+              <h2 className="text-lg font-semibold text-white">
+                Pending Records
+              </h2>
               <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
                 {pendingRecords.length} record(s)
               </span>
@@ -397,6 +525,7 @@ export default function AnodizingProduction() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-white/10 bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-400">
+                    <th className="px-3 py-3">Date</th>
                     <th className="px-3 py-3">Profile</th>
                     <th className="px-3 py-3">Type</th>
                     <th className="px-3 py-3">Surface</th>
@@ -409,20 +538,46 @@ export default function AnodizingProduction() {
                 </thead>
                 <tbody>
                   {pendingRecords.map((record, index) => (
-                    <tr key={record.id} className="border-b border-white/5 transition hover:bg-white/5">
-                      <td className="px-3 py-3 font-bold text-emerald-400">{record.profile}</td>
-                      <td className="px-3 py-3 text-zinc-300">{record.type}</td>
-                      <td className="px-3 py-3 text-zinc-300">{record.surface}</td>
-                      <td className="px-3 py-3 text-zinc-300">{record.rack_no || "—"}</td>
-                      <td className="px-3 py-3 text-zinc-300">{record.length}m</td>
-                      <td className="px-3 py-3 font-bold text-emerald-400">{record.total_production_qty || "—"}</td>
-                      <td className="px-3 py-3">{record.premium_packing_qty || "—"}</td>
+                    <tr
+                      key={record.id ?? index}
+                      className="border-b border-white/5 transition hover:bg-white/5"
+                    >
+                      <td className="px-3 py-3 text-zinc-400 text-xs">
+                        {record.anodizing_date || "—"}
+                      </td>
+                      <td className="px-3 py-3 font-bold text-emerald-400">
+                        {record.profile}
+                      </td>
+                      <td className="px-3 py-3 text-zinc-300">
+                        {record.type}
+                      </td>
+                      <td className="px-3 py-3 text-zinc-300">
+                        {record.surface}
+                      </td>
+                      <td className="px-3 py-3 text-zinc-300">
+                        {record.rack_no || "—"}
+                      </td>
+                      <td className="px-3 py-3 text-zinc-300">
+                        {record.length ? `${record.length}m` : "—"}
+                      </td>
+                      <td className="px-3 py-3 font-bold text-emerald-400">
+                        {record.total_production_qty || "—"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {record.premium_packing_qty || "—"}
+                      </td>
                       <td className="px-3 py-3">
                         <div className="flex gap-2">
-                          <button onClick={() => editPendingRecord(index)} className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300">
+                          <button
+                            onClick={() => editPendingRecord(index)}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300"
+                          >
                             Edit
                           </button>
-                          <button onClick={() => handleDeletePending(index)} className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300">
+                          <button
+                            onClick={() => handleDeletePending(index)}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300"
+                          >
                             Remove
                           </button>
                         </div>
@@ -432,15 +587,33 @@ export default function AnodizingProduction() {
                 </tbody>
               </table>
             </div>
-            <div className="border-t border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center justify-between border-t border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-4">
               <div className="flex items-center gap-2 text-sm text-emerald-300">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
                 </svg>
                 <span>{pendingRecords.length} record(s) ready to submit</span>
               </div>
-              <button onClick={handleFinalSubmit} disabled={loading} className={`${glassBtnPrimary} flex items-center gap-2`}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <button
+                onClick={handleFinalSubmit}
+                disabled={loading}
+                className={`${glassBtnPrimary} flex items-center gap-2`}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
                 </svg>
                 {loading ? "Submitting..." : "Final Submit"}
@@ -449,218 +622,548 @@ export default function AnodizingProduction() {
           </div>
         )}
 
-        {/* Recent Data Table */}
+        {/* Recent Submitted Records - Grouped by Date */}
         <div className={`mt-6 overflow-hidden ${glassCard}`}>
-          <div className="border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">Recent Submitted Records</h2>
-            <button onClick={loadRecentData} className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300">
+          <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
+            <div>
+              <h2 className="text-lg font-semibold text-white">
+                Recent Submitted Records
+              </h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Today · Yesterday · Day Before Yesterday
+              </p>
+            </div>
+            <button
+              onClick={loadRecentData}
+              className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300"
+            >
               ↻ Refresh
             </button>
           </div>
+
           {recentData.length === 0 ? (
-            <div className="p-8 text-center text-zinc-500">No submitted records found in the last 3 days.</div>
+            <div className="p-8 text-center text-zinc-500">
+              No submitted records found for today, yesterday, or day before
+              yesterday.
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-400">
-                    <th className="px-3 py-3">Profile</th>
-                    <th className="px-3 py-3">Type</th>
-                    <th className="px-3 py-3">Surface</th>
-                    <th className="px-3 py-3">Rack</th>
-                    <th className="px-3 py-3">Length</th>
-                    <th className="px-3 py-3">Total Qty</th>
-                    <th className="px-3 py-3">Premium</th>
-                    <th className="px-3 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentData.map((row) => (
-                    <tr key={row.id} className="border-b border-white/5 transition hover:bg-white/5">
-                      <td className="px-3 py-3 font-bold text-emerald-400">{row.profile}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.type}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.surface}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.rack_no || "—"}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.length}m</td>
-                      <td className="px-3 py-3 font-bold text-emerald-400">{row.total_production_qty || "—"}</td>
-                      <td className="px-3 py-3">{row.premium_packing_qty || "—"}</td>
-                      <td className="px-3 py-3 text-right">
-                        <button onClick={() => editRecentRecord(row)} className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300">
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="divide-y divide-white/5">
+              {Object.entries(groupedRecentData).map(([dateLabel, rows]) => (
+                <div key={dateLabel}>
+                  {/* Date Group Header */}
+                  <div className="flex items-center gap-3 bg-zinc-900/60 px-6 py-2">
+                    <span className="text-xs font-semibold uppercase tracking-widest text-emerald-400">
+                      {dateLabel}
+                    </span>
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-500">
+                      {rows.length} record{rows.length > 1 ? "s" : ""}
+                    </span>
+                    <div className="h-px flex-1 bg-white/5" />
+                    {/* Show actual date */}
+                    <span className="text-xs text-zinc-600">
+                      {rows[0]?.anodizing_date}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-white/5 text-xs uppercase tracking-wider text-zinc-500">
+                          <th className="px-3 py-2 pl-6">Profile</th>
+                          <th className="px-3 py-2">Type</th>
+                          <th className="px-3 py-2">Surface</th>
+                          <th className="px-3 py-2">Rack</th>
+                          <th className="px-3 py-2">Length</th>
+                          <th className="px-3 py-2">Rack Qty</th>
+                          <th className="px-3 py-2">Total Qty</th>
+                          <th className="px-3 py-2">Premium</th>
+                          <th className="px-3 py-2">Non-Brand</th>
+                          <th className="px-3 py-2">Weight Bar</th>
+                          <th className="px-3 py-2">1 Micron</th>
+                          <th className="px-3 py-2 text-right pr-6">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr
+                            key={row.id}
+                            className="border-b border-white/5 transition hover:bg-white/5"
+                          >
+                            <td className="px-3 py-3 pl-6 font-bold text-emerald-400">
+                              {row.profile}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.type}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.surface}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.rack_no || "—"}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.length ? `${row.length}m` : "—"}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.rack_wise_qty || "—"}
+                            </td>
+                            <td className="px-3 py-3 font-bold text-emerald-400">
+                              {row.total_production_qty || "—"}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.premium_packing_qty || "—"}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.non_brand_packing_qty || "—"}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.weight_bar_qty || "—"}
+                            </td>
+                            <td className="px-3 py-3 text-zinc-300">
+                              {row.one_micron || "—"}
+                            </td>
+                            <td className="px-3 py-3 pr-6 text-right">
+                              <button
+                                onClick={() => editRecentRecord(row)}
+                                className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300"
+                              >
+                                Edit
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Add Production Modal */}
+      {/* Modal */}
       {showModal && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" onClick={closeModal} />
+          <div
+            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+            onClick={closeModal}
+          />
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4">
-              <div className={`w-full max-w-2xl overflow-hidden my-8 ${glassCard}`}>
+              <div
+                className={`relative w-full max-w-2xl overflow-hidden my-8 ${glassCard}`}
+              >
+                {/* Modal Header */}
                 <div className="sticky top-0 z-10 border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-4 backdrop-blur-xl">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold uppercase tracking-widest text-emerald-400">New Production Record</h3>
-                    <button onClick={closeModal} className="text-zinc-400 transition hover:text-white p-1">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <h3 className="text-lg font-bold uppercase tracking-widest text-emerald-400">
+                      {getModalTitle()}
+                    </h3>
+                    <button
+                      onClick={closeModal}
+                      className="rounded-lg p-1 text-zinc-400 transition hover:bg-white/10 hover:text-white"
+                    >
+                      <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
                         <path d="M18 6L6 18M6 6l12 12" />
                       </svg>
                     </button>
                   </div>
                 </div>
-                <form className="max-h-[80vh] overflow-y-auto p-6 space-y-4">
+
+                {/* Modal Body */}
+                <div className="max-h-[80vh] overflow-y-auto p-6 space-y-4">
+                  {/* Dates */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Anodizing Date</label>
-                      <input type="date" value={form.anodizingDate} onChange={(e) => setForm({ ...form, anodizingDate: e.target.value })} className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Anodizing Date <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={form.anodizingDate}
+                        onChange={(e) =>
+                          setForm({ ...form, anodizingDate: e.target.value })
+                        }
+                        className={glassInput}
+                        required
+                      />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Bar Binding Date</label>
-                      <input type="date" value={form.barBindingDate} onChange={(e) => setForm({ ...form, barBindingDate: e.target.value })} className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Bar Binding Date
+                      </label>
+                      <input
+                        type="date"
+                        value={form.barBindingDate}
+                        onChange={(e) =>
+                          setForm({ ...form, barBindingDate: e.target.value })
+                        }
+                        className={glassInput}
+                      />
                     </div>
                   </div>
 
+                  {/* Type & Surface */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Type</label>
-                      <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className={glassInput}>
-                        <option value="" disabled>Select Type...</option>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Type <span className="text-red-400">*</span>
+                      </label>
+                      <select
+                        value={form.type}
+                        onChange={(e) =>
+                          setForm({ ...form, type: e.target.value })
+                        }
+                        className={glassInput}
+                        required
+                      >
+                        <option value="" disabled>
+                          Select Type...
+                        </option>
                         <option value="ULR">ULR</option>
                         <option value="PRM">PRM</option>
                         <option value="ULR PRM">ULR PRM</option>
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Surface</label>
-                      <select value={form.surface} onChange={(e) => setForm({ ...form, surface: e.target.value })} className={glassInput}>
-                        <option value="" disabled>Select Surface...</option>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Surface <span className="text-red-400">*</span>
+                      </label>
+                      <select
+                        value={form.surface}
+                        onChange={(e) =>
+                          setForm({ ...form, surface: e.target.value })
+                        }
+                        className={glassInput}
+                        required
+                      >
+                        <option value="" disabled>
+                          Select Surface...
+                        </option>
                         <option value="Natural">Natural</option>
                         <option value="Bronze">Bronze</option>
                       </select>
                     </div>
                   </div>
 
-                  <div className="relative">
-                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Profile</label>
+                  {/* Profile Search */}
+                  <div ref={profileDropdownRef} className="relative">
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                      Profile <span className="text-red-400">*</span>
+                    </label>
+
+                    {/* Show selected profile badge if chosen */}
+                    {form.profile && !showProfileDropdown && (
+                      <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1">
+                        <span className="text-sm font-bold text-emerald-400">
+                          {form.profile}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm({ ...form, profile: "" });
+                            setProfileSearch("");
+                            setShowProfileDropdown(true);
+                          }}
+                          className="text-zinc-400 hover:text-white"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+
                     <div className="relative">
                       <input
                         type="text"
-                        value={profileSearch || form.profile}
-                        onChange={(e) => { setProfileSearch(e.target.value); setShowProfileDropdown(true); setForm({ ...form, profile: e.target.value }); }}
+                        value={profileSearch}
+                        onChange={(e) => {
+                          setProfileSearch(e.target.value);
+                          setShowProfileDropdown(true);
+                          // Allow free-text entry
+                          setForm({ ...form, profile: e.target.value });
+                        }}
                         onFocus={() => setShowProfileDropdown(true)}
-                        placeholder="Search profile..."
+                        placeholder={
+                          form.profile
+                            ? "Change profile..."
+                            : "Search profile..."
+                        }
                         className={`${glassInput} pl-10`}
-                        required
                         autoComplete="off"
                       />
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                      >
                         <circle cx="11" cy="11" r="8" />
                         <path d="M21 21l-4.35-4.35" />
                       </svg>
-                      {showProfileDropdown && (
-                        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl">
-                          {filteredProfiles.length === 0 ? (
-                            <div className="px-3 py-2 text-sm text-zinc-500">No matches</div>
-                          ) : (
-                            filteredProfiles.map((p) => (
-                              <div
-                                key={p}
-                                onClick={() => { setForm({ ...form, profile: p }); setProfileSearch(""); setShowProfileDropdown(false); }}
-                                className="cursor-pointer border-b border-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:bg-emerald-500/20 hover:text-emerald-300"
-                              >
-                                {p}
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
                     </div>
+
+                    {/* Dropdown */}
+                    {showProfileDropdown && (
+                      <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-52 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl">
+                        {filteredProfiles.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-zinc-500">
+                            No matches
+                          </div>
+                        ) : (
+                          filteredProfiles.map((p) => (
+                            <div
+                              key={p}
+                              onMouseDown={(e) => {
+                                // Use mousedown to prevent blur from closing dropdown first
+                                e.preventDefault();
+                                setForm({ ...form, profile: p });
+                                setProfileSearch("");
+                                setShowProfileDropdown(false);
+                              }}
+                              className={`cursor-pointer border-b border-zinc-900 px-3 py-2 text-sm transition hover:bg-emerald-500/20 hover:text-emerald-300 ${
+                                form.profile === p
+                                  ? "bg-emerald-500/10 text-emerald-400 font-semibold"
+                                  : "text-zinc-300"
+                              }`}
+                            >
+                              {p}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
 
+                  {/* Rack & Length */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Rack No</label>
-                      <input type="text" value={form.rackNo} onChange={(e) => setForm({ ...form, rackNo: e.target.value.replace(/[^0-9,]/g, '') })} placeholder="e.g. 1, 2, 3" className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Rack No
+                      </label>
+                      <input
+                        type="text"
+                        value={form.rackNo}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            rackNo: e.target.value.replace(/[^0-9,]/g, ""),
+                          })
+                        }
+                        placeholder="e.g. 1, 2, 3"
+                        className={glassInput}
+                      />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Length</label>
-                      <input type="number" value={form.length} onChange={(e) => setForm({ ...form, length: e.target.value })} placeholder="0" className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Length (m)
+                      </label>
+                      <input
+                        type="number"
+                        value={form.length}
+                        onChange={(e) =>
+                          setForm({ ...form, length: e.target.value })
+                        }
+                        placeholder="0"
+                        className={glassInput}
+                        min="0"
+                      />
                     </div>
                   </div>
 
+                  {/* Rack Wise Qty & Total Production Qty */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Rack Wise Qty</label>
-                      <input type="text" value={form.rackWiseQty} onChange={(e) => setForm({ ...form, rackWiseQty: e.target.value.replace(/[^0-9,]/g, '') })} placeholder="e.g. 50, 50" className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Rack Wise Qty
+                      </label>
+                      <input
+                        type="text"
+                        value={form.rackWiseQty}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            rackWiseQty: e.target.value.replace(
+                              /[^0-9,]/g,
+                              ""
+                            ),
+                          })
+                        }
+                        placeholder="e.g. 50, 50"
+                        className={glassInput}
+                      />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Total Production Qty</label>
-                      <input type="number" value={form.totalProductionQty} onChange={(e) => setForm({ ...form, totalProductionQty: e.target.value })} className={glassInputGreen} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Total Production Qty
+                      </label>
+                      <input
+                        type="number"
+                        value={form.totalProductionQty}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            totalProductionQty: e.target.value,
+                          })
+                        }
+                        placeholder="0"
+                        className={glassInputGreen}
+                        min="0"
+                      />
                     </div>
                   </div>
 
+                  {/* Packing Quantities */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Premium Packing Qty</label>
-                      <input type="number" value={form.premiumPackingQty} onChange={(e) => setForm({ ...form, premiumPackingQty: e.target.value })} placeholder="0" className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Premium Packing Qty
+                      </label>
+                      <input
+                        type="number"
+                        value={form.premiumPackingQty}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            premiumPackingQty: e.target.value,
+                          })
+                        }
+                        placeholder="0"
+                        className={glassInput}
+                        min="0"
+                      />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Non-Brand Packing Qty</label>
-                      <input type="number" value={form.nonBrandPackingQty} onChange={(e) => setForm({ ...form, nonBrandPackingQty: e.target.value })} placeholder="0" className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Non-Brand Packing Qty
+                      </label>
+                      <input
+                        type="number"
+                        value={form.nonBrandPackingQty}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            nonBrandPackingQty: e.target.value,
+                          })
+                        }
+                        placeholder="0"
+                        className={glassInput}
+                        min="0"
+                      />
                     </div>
                   </div>
 
+                  {/* Weight Bar & One Micron */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">Weight Bar Qty</label>
-                      <input type="number" value={form.weightBarQty} onChange={(e) => setForm({ ...form, weightBarQty: e.target.value })} placeholder="0" className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Weight Bar Qty
+                      </label>
+                      <input
+                        type="number"
+                        value={form.weightBarQty}
+                        onChange={(e) =>
+                          setForm({ ...form, weightBarQty: e.target.value })
+                        }
+                        placeholder="0"
+                        className={glassInput}
+                        min="0"
+                      />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">One Micron</label>
-                      <input type="number" value={form.oneMicron} onChange={(e) => setForm({ ...form, oneMicron: e.target.value })} placeholder="0" className={glassInput} />
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        One Micron
+                      </label>
+                      <input
+                        type="number"
+                        value={form.oneMicron}
+                        onChange={(e) =>
+                          setForm({ ...form, oneMicron: e.target.value })
+                        }
+                        placeholder="0"
+                        className={glassInput}
+                        min="0"
+                      />
                     </div>
                   </div>
 
-                  <div className="mt-6 flex gap-3">
-                    <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-bold uppercase text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300">
+                  {/* Action Buttons */}
+                  <div className="mt-6 flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-bold uppercase text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300"
+                    >
                       Cancel
                     </button>
+
                     {editingRecentId === null ? (
-                      <button type="button" onClick={handleAddToPending} disabled={loading} className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50">
-                        {editingIndex !== null ? "Update Pending" : loading ? "Saving..." : "Add to Pending"}
+                      <button
+                        type="button"
+                        onClick={handleAddToPending}
+                        disabled={loading}
+                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
+                      >
+                        {loading
+                          ? "Saving..."
+                          : editingIndex !== null
+                          ? "Update Pending"
+                          : "Add to Pending"}
                       </button>
                     ) : (
-                      <button type="button" onClick={handleUpdateRecent} disabled={loading} className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50">
+                      <button
+                        type="button"
+                        onClick={handleUpdateRecent}
+                        disabled={loading}
+                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
+                      >
                         {loading ? "Updating..." : "Update Record"}
                       </button>
                     )}
                   </div>
-                </form>
+                </div>
               </div>
             </div>
           </div>
         </>
       )}
 
+      {/* Cloud Sync Overlay */}
       {showCloudSync && <CloudSync />}
 
+      {/* Success Overlay */}
       {showSuccess && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 backdrop-blur-xl">
           <div className="rounded-3xl border border-white/10 bg-white/10 p-10 text-center shadow-2xl backdrop-blur-2xl">
             <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full bg-emerald-500/20">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-400">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="text-emerald-400"
+              >
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-white">Production Record Saved</h2>
-            <p className="mt-2 text-sm text-zinc-400">Data synced to database successfully</p>
+            <h2 className="text-2xl font-bold text-white">
+              Production Record Saved
+            </h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Data synced to database successfully
+            </p>
           </div>
         </div>
       )}
