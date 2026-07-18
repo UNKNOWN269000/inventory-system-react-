@@ -96,45 +96,22 @@ interface PackingFlags {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const today = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const EMPTY_FORM: FormState = {
-  prodDate: "",
-  packDate: "",
-  length: "",
-  prodType: "",
-  profile: "",
-  surface: "",
-  premiumPackNo: "",
-  premiumOneQty: "",
-  premiumTotalBundle: "",
-  premiumAvgWeight: "",
-  premiumPcsPackNo: "",
-  premiumPcsOneQty: "",
-  premiumPcsTotalQty: "",
-  premiumPcsAvgWeight: "",
-  nonBrandPackNo: "",
-  nonBrandOneQty: "",
-  nonBrandTotalBundle: "",
-  nonBrandAvgWeight: "",
-  nonBrandPcsPackNo: "",
-  nonBrandPcsOneQty: "",
-  nonBrandPcsTotalQty: "",
-  nonBrandPcsAvgWeight: "",
-  weightBarPackNo: "",
-  weightBarBundleQty: "",
-  weightBarAvgWeight: "",
+  prodDate: "", packDate: "", length: "", prodType: "", profile: "", surface: "",
+  premiumPackNo: "", premiumOneQty: "", premiumTotalBundle: "", premiumAvgWeight: "",
+  premiumPcsPackNo: "", premiumPcsOneQty: "", premiumPcsTotalQty: "", premiumPcsAvgWeight: "",
+  nonBrandPackNo: "", nonBrandOneQty: "", nonBrandTotalBundle: "", nonBrandAvgWeight: "",
+  nonBrandPcsPackNo: "", nonBrandPcsOneQty: "", nonBrandPcsTotalQty: "", nonBrandPcsAvgWeight: "",
+  weightBarPackNo: "", weightBarBundleQty: "", weightBarAvgWeight: "",
 };
 
 const EMPTY_FLAGS: PackingFlags = {
-  premiumEnabled: false,
-  nonBrandEnabled: false,
-  weightBarEnabled: false,
-  premiumPcsEnabled: false,
-  nonBrandPcsEnabled: false,
+  premiumEnabled: false, nonBrandEnabled: false, weightBarEnabled: false,
+  premiumPcsEnabled: false, nonBrandPcsEnabled: false,
 };
 
-/** Maps a DB row → FormState + PackingFlags */
 function rowToFormState(record: any): { form: FormState; flags: PackingFlags } {
   return {
     form: {
@@ -178,17 +155,50 @@ function rowToFormState(record: any): { form: FormState; flags: PackingFlags } {
 
 const glassCard =
   "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
-
 const glassInput =
   "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm " +
   "text-zinc-100 outline-none focus:border-emerald-500 backdrop-blur-sm transition-colors";
-
 const glassBtnPrimary =
   "rounded-lg bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-2.5 " +
   "text-sm font-bold text-black shadow-lg shadow-emerald-500/20 transition " +
   "hover:shadow-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed";
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Small reusable components ────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+type BadgeColor = "emerald" | "blue" | "purple";
+function BadgeCell({ enabled, color }: { enabled: boolean; color: BadgeColor }) {
+  const styles: Record<BadgeColor, string> = {
+    emerald: "bg-emerald-500/20 text-emerald-300",
+    blue: "bg-blue-500/20 text-blue-300",
+    purple: "bg-purple-500/20 text-purple-300",
+  };
+  return (
+    <td className="px-3 py-3">
+      {enabled
+        ? <span className={`rounded-full px-2 py-0.5 text-xs ${styles[color]}`}>Yes</span>
+        : <span className="text-zinc-600">—</span>}
+    </td>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
+    </svg>
+  );
+}
 
 interface SectionToggleProps {
   label: string;
@@ -198,26 +208,17 @@ interface SectionToggleProps {
   borderHover?: string;
   children?: React.ReactNode;
 }
-
 function SectionToggle({
-  label,
-  checked,
-  onChange,
+  label, checked, onChange,
   accentClass = "accent-emerald-500",
   borderHover = "hover:border-emerald-500/30",
   children,
 }: SectionToggleProps) {
   return (
     <div className="mb-3">
-      <label
-        className={`flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 ${borderHover}`}
-      >
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className={`h-5 w-5 rounded border-white/10 bg-white/5 ${accentClass}`}
-        />
+      <label className={`flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 ${borderHover}`}>
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+          className={`h-5 w-5 rounded border-white/10 bg-white/5 ${accentClass}`} />
         <span className="text-sm font-bold uppercase text-zinc-400">{label}</span>
       </label>
       {checked && children}
@@ -225,19 +226,92 @@ function SectionToggle({
   );
 }
 
-interface FieldProps {
-  label: string;
-  children: React.ReactNode;
-}
+// ─── Delete Confirm Modal ─────────────────────────────────────────────────────
 
-function Field({ label, children }: FieldProps) {
+interface DeleteConfirmProps {
+  record: any;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}
+function DeleteConfirmModal({ record, onConfirm, onCancel, deleting }: DeleteConfirmProps) {
   return (
-    <div>
-      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-        {label}
-      </label>
-      {children}
-    </div>
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm" onClick={onCancel} />
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className={`w-full max-w-sm overflow-hidden ${glassCard}`}>
+          {/* Header */}
+          <div className="border-b border-white/10 bg-gradient-to-r from-red-500/10 to-rose-500/10 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-red-500/20">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" className="text-red-400">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-white">Delete Record</h3>
+                <p className="text-xs text-zinc-400">This action cannot be undone</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="px-6 py-5">
+            <p className="text-sm text-zinc-300">
+              Are you sure you want to permanently delete this record?
+            </p>
+            {/* Record summary */}
+            <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500">Profile</span>
+                <span className="text-sm font-bold text-emerald-400">{record.profile}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500">Pack Date</span>
+                <span className="text-sm text-zinc-300">{record.packing_date}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500">Surface</span>
+                <span className="text-sm text-zinc-300">{record.surface}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500">Length</span>
+                <span className="text-sm text-zinc-300">{record.length}m</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex gap-3 border-t border-white/10 px-6 py-4">
+            <button
+              onClick={onCancel}
+              className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold text-zinc-300 transition hover:border-white/30 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={deleting}
+              className="flex-1 rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-500/20 transition hover:shadow-red-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deleting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  Deleting…
+                </span>
+              ) : "Delete"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -251,9 +325,14 @@ export default function AnodizingPacking() {
   const [showModal, setShowModal] = useState(false);
   const [showCloudSync, setShowCloudSync] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("Packing Record Saved");
   const [loading, setLoading] = useState(false);
 
-  // Profile search
+  // Delete confirm state
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Profile autocomplete
   const [profileSearch, setProfileSearch] = useState("");
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -266,7 +345,7 @@ export default function AnodizingPacking() {
   const [editingPendingId, setEditingPendingId] = useState<number | null>(null);
   const [editingRecentId, setEditingRecentId] = useState<number | null>(null);
 
-  // Form state
+  // Form
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [flags, setFlags] = useState<PackingFlags>({ ...EMPTY_FLAGS });
 
@@ -277,16 +356,10 @@ export default function AnodizingPacking() {
   );
 
   const calcPremiumTotal = () =>
-    String(
-      (parseInt(form.premiumOneQty) || 0) *
-        (parseInt(form.premiumTotalBundle) || 0)
-    );
+    String((parseInt(form.premiumOneQty) || 0) * (parseInt(form.premiumTotalBundle) || 0));
 
   const calcNonBrandTotal = () =>
-    String(
-      (parseInt(form.nonBrandOneQty) || 0) *
-        (parseInt(form.nonBrandTotalBundle) || 0)
-    );
+    String((parseInt(form.nonBrandOneQty) || 0) * (parseInt(form.nonBrandTotalBundle) || 0));
 
   // ── Data loaders ─────────────────────────────────────────────────────────────
 
@@ -296,7 +369,6 @@ export default function AnodizingPacking() {
       .select("*")
       .eq("submitted", false)
       .order("created_at", { ascending: false });
-
     if (!error) setPendingRecords(data ?? []);
     else console.error("loadPending:", error);
   }, []);
@@ -311,7 +383,7 @@ export default function AnodizingPacking() {
       .eq("submitted", true)
       .gte("pack_date", cutoff.toISOString().slice(0, 10))
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(50);
 
     if (!error) setRecentData(data ?? []);
     else console.error("loadRecent:", error);
@@ -322,7 +394,7 @@ export default function AnodizingPacking() {
     loadRecent();
   }, [loadPending, loadRecent]);
 
-  // Close profile dropdown on outside click
+  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -333,7 +405,7 @@ export default function AnodizingPacking() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ── DB record builder ─────────────────────────────────────────────────────────
+  // ── Record builder ────────────────────────────────────────────────────────────
 
   const buildRecord = useCallback(
     (submitted = false) => ({
@@ -352,7 +424,6 @@ export default function AnodizingPacking() {
       premium_total_bundles: flags.premiumEnabled ? form.premiumTotalBundle : null,
       premium_total_qty: flags.premiumEnabled ? calcPremiumTotal() : null,
       premium_avg_weight: flags.premiumEnabled ? form.premiumAvgWeight : null,
-
       premium_pcs_enabled: flags.premiumEnabled && flags.premiumPcsEnabled,
       premium_pcs_pack_no: flags.premiumPcsEnabled ? form.premiumPcsPackNo : null,
       premium_pcs_one_qty: flags.premiumPcsEnabled ? form.premiumPcsOneQty : null,
@@ -365,7 +436,6 @@ export default function AnodizingPacking() {
       nonbrand_total_bundles: flags.nonBrandEnabled ? form.nonBrandTotalBundle : null,
       nonbrand_total_qty: flags.nonBrandEnabled ? calcNonBrandTotal() : null,
       nonbrand_avg_weight: flags.nonBrandEnabled ? form.nonBrandAvgWeight : null,
-
       nonbrand_pcs_enabled: flags.nonBrandEnabled && flags.nonBrandPcsEnabled,
       nonbrand_pcs_pack_no: flags.nonBrandPcsEnabled ? form.nonBrandPcsPackNo : null,
       nonbrand_pcs_one_qty: flags.nonBrandPcsEnabled ? form.nonBrandPcsOneQty : null,
@@ -384,7 +454,7 @@ export default function AnodizingPacking() {
   // ── Modal helpers ─────────────────────────────────────────────────────────────
 
   const resetModalState = () => {
-    setForm({ ...EMPTY_FORM, prodDate: today(), packDate: today() });
+    setForm({ ...EMPTY_FORM, prodDate: todayStr(), packDate: todayStr() });
     setFlags({ ...EMPTY_FLAGS });
     setProfileSearch("");
     setShowProfileDropdown(false);
@@ -392,15 +462,8 @@ export default function AnodizingPacking() {
     setEditingRecentId(null);
   };
 
-  const openModal = () => {
-    resetModalState();
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    resetModalState();
-  };
+  const openModal = () => { resetModalState(); setShowModal(true); };
+  const closeModal = () => { setShowModal(false); resetModalState(); };
 
   const loadRecordIntoForm = (record: any) => {
     const { form: f, flags: fl } = rowToFormState(record);
@@ -423,9 +486,8 @@ export default function AnodizingPacking() {
     setShowModal(true);
   };
 
-  // ── Form actions ──────────────────────────────────────────────────────────────
+  // ── Validation ────────────────────────────────────────────────────────────────
 
-  /** Validates required fields before saving */
   const validateForm = (): string | null => {
     if (!form.prodDate) return "Production date is required.";
     if (!form.packDate) return "Packing date is required.";
@@ -438,24 +500,20 @@ export default function AnodizingPacking() {
     return null;
   };
 
+  // ── CRUD actions ──────────────────────────────────────────────────────────────
+
   const handleAddToPending = async () => {
     const err = validateForm();
     if (err) return alert(err);
-
-    const record = { ...buildRecord(false) };
     setLoading(true);
-
     try {
       if (editingPendingId !== null) {
         const { error } = await supabase
-          .from("anodizing_packing")
-          .update(record)
-          .eq("id", editingPendingId);
+          .from("anodizing_packing").update(buildRecord(false)).eq("id", editingPendingId);
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from("anodizing_packing")
-          .insert([record]);
+          .from("anodizing_packing").insert([buildRecord(false)]);
         if (error) throw error;
       }
       closeModal();
@@ -468,29 +526,20 @@ export default function AnodizingPacking() {
   };
 
   const handleFinalSubmit = async () => {
-    if (pendingRecords.length === 0) {
-      alert("No pending records to submit.");
-      return;
-    }
-
+    if (pendingRecords.length === 0) { alert("No pending records to submit."); return; }
     const ids = pendingRecords.filter((r) => r.id).map((r) => r.id);
     if (ids.length === 0) return;
 
     setShowCloudSync(true);
     setLoading(true);
-
     try {
       const { error } = await supabase
-        .from("anodizing_packing")
-        .update({ submitted: true })
-        .in("id", ids);
-
+        .from("anodizing_packing").update({ submitted: true }).in("id", ids);
       if (error) throw error;
-
       await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
+      setSuccessMessage("All Records Submitted");
       setShowSuccess(true);
-
       setTimeout(async () => {
         setShowSuccess(false);
         setPendingRecords([]);
@@ -511,19 +560,14 @@ export default function AnodizingPacking() {
 
     setShowCloudSync(true);
     setLoading(true);
-
     try {
       const { error } = await supabase
-        .from("anodizing_packing")
-        .update(buildRecord(true))
-        .eq("id", editingRecentId);
-
+        .from("anodizing_packing").update(buildRecord(true)).eq("id", editingRecentId);
       if (error) throw error;
-
       await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
+      setSuccessMessage("Record Updated Successfully");
       setShowSuccess(true);
-
       setTimeout(async () => {
         setShowSuccess(false);
         closeModal();
@@ -541,9 +585,7 @@ export default function AnodizingPacking() {
     if (!record?.id) return;
     try {
       const { error } = await supabase
-        .from("anodizing_packing")
-        .delete()
-        .eq("id", record.id);
+        .from("anodizing_packing").delete().eq("id", record.id);
       if (error) throw error;
       setPendingRecords((prev) => prev.filter((r) => r.id !== record.id));
     } catch (err: any) {
@@ -551,7 +593,27 @@ export default function AnodizingPacking() {
     }
   };
 
-  // ── Form field helpers ────────────────────────────────────────────────────────
+  // ── Delete recent (with confirm modal) ────────────────────────────────────────
+
+  const confirmDeleteRecent = (record: any) => setDeleteTarget(record);
+
+  const handleDeleteRecent = async () => {
+    if (!deleteTarget?.id) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("anodizing_packing").delete().eq("id", deleteTarget.id);
+      if (error) throw error;
+      setRecentData((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ── Field helpers ─────────────────────────────────────────────────────────────
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -559,7 +621,6 @@ export default function AnodizingPacking() {
   const setFlag = <K extends keyof PackingFlags>(key: K, value: boolean) =>
     setFlags((prev) => ({ ...prev, [key]: value }));
 
-  // Numeric-only input (digits, dash, comma)
   const numericOnly = (v: string, allowComma = false) =>
     allowComma ? v.replace(/[^0-9,-]/g, "") : v.replace(/[^0-9-]/g, "");
 
@@ -567,11 +628,7 @@ export default function AnodizingPacking() {
 
   return (
     <div className="min-h-screen text-zinc-100">
-      <SlideMenu
-        nodes={menuStructure}
-        isOpen={menuOpen}
-        onClose={() => setMenuOpen(false)}
-      />
+      <SlideMenu nodes={menuStructure} isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
       {/* ── Header ── */}
       <header className="border-b border-zinc-800">
@@ -579,25 +636,17 @@ export default function AnodizingPacking() {
           <div className="flex items-center gap-3">
             <MenuButton onClick={() => setMenuOpen(true)} />
             <Link href="/home" className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 font-bold text-black shadow-lg shadow-emerald-500/20">
-                U
-              </div>
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 font-bold text-black shadow-lg shadow-emerald-500/20">U</div>
               <div>
-                <p className="text-sm font-semibold tracking-wide text-white">
-                  Ultra Aluminum
-                </p>
+                <p className="text-sm font-semibold tracking-wide text-white">Ultra Aluminum</p>
                 <p className="text-xs text-zinc-500">Pvt Ltd</p>
               </div>
             </Link>
           </div>
           <div className="flex items-center gap-3">
-            {user && (
-              <span className="text-xs text-zinc-500">User: {user}</span>
-            )}
-            <button
-              onClick={logout}
-              className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-emerald-400 hover:text-emerald-300"
-            >
+            {user && <span className="text-xs text-zinc-500">User: {user}</span>}
+            <button onClick={logout}
+              className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-emerald-400 hover:text-emerald-300">
               Logout
             </button>
           </div>
@@ -623,16 +672,10 @@ export default function AnodizingPacking() {
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
                 Packing Module
               </div>
-              <h1 className="mt-3 text-3xl font-bold text-white">
-                Anodizing Packing
-              </h1>
-              <p className="text-sm text-zinc-400">
-                Record anodizing packing data
-              </p>
+              <h1 className="mt-3 text-3xl font-bold text-white">Anodizing Packing</h1>
+              <p className="text-sm text-zinc-400">Record anodizing packing data</p>
             </div>
-            <button onClick={openModal} className={glassBtnPrimary}>
-              + Add Packing Record
-            </button>
+            <button onClick={openModal} className={glassBtnPrimary}>+ Add Packing Record</button>
           </div>
         </div>
 
@@ -640,62 +683,39 @@ export default function AnodizingPacking() {
         {pendingRecords.length > 0 && (
           <div className={`mt-6 overflow-hidden ${glassCard}`}>
             <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
-              <h2 className="text-lg font-semibold text-white">
-                Pending Records
-              </h2>
+              <h2 className="text-lg font-semibold text-white">Pending Records</h2>
               <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
                 {pendingRecords.length} record(s)
               </span>
             </div>
-
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-white/10 bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-400">
-                    {[
-                      "Profile","Type","Surface","Length","Pack Date",
-                      "Premium","Non-Brand","Weight Bar","Action",
-                    ].map((h) => (
+                    {["Profile","Type","Surface","Length","Pack Date","Premium","Non-Brand","Weight Bar","Actions"].map(h => (
                       <th key={h} className="px-3 py-3">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {pendingRecords.map((record) => (
-                    <tr
-                      key={record.id}
-                      className="border-b border-white/5 transition hover:bg-white/5"
-                    >
-                      <td className="px-3 py-3 font-bold text-emerald-400">
-                        {record.profile}
-                      </td>
-                      <td className="px-3 py-3 text-zinc-300">
-                        {record.production_type}
-                      </td>
-                      <td className="px-3 py-3 text-zinc-300">
-                        {record.surface}
-                      </td>
-                      <td className="px-3 py-3 text-zinc-300">
-                        {record.length}m
-                      </td>
-                      <td className="px-3 py-3 text-zinc-300">
-                        {record.packing_date}
-                      </td>
+                    <tr key={record.id} className="border-b border-white/5 transition hover:bg-white/5">
+                      <td className="px-3 py-3 font-bold text-emerald-400">{record.profile}</td>
+                      <td className="px-3 py-3 text-zinc-300">{record.production_type}</td>
+                      <td className="px-3 py-3 text-zinc-300">{record.surface}</td>
+                      <td className="px-3 py-3 text-zinc-300">{record.length}m</td>
+                      <td className="px-3 py-3 text-zinc-300">{record.packing_date}</td>
                       <BadgeCell enabled={record.premium_enabled} color="emerald" />
                       <BadgeCell enabled={record.nonbrand_enabled} color="blue" />
                       <BadgeCell enabled={record.weightbar_enabled} color="purple" />
                       <td className="px-3 py-3">
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => editPendingRecord(record)}
-                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300"
-                          >
+                          <button onClick={() => editPendingRecord(record)}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300">
                             Edit
                           </button>
-                          <button
-                            onClick={() => handleDeletePending(record)}
-                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300"
-                          >
+                          <button onClick={() => handleDeletePending(record)}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300">
                             Remove
                           </button>
                         </div>
@@ -705,82 +725,127 @@ export default function AnodizingPacking() {
                 </tbody>
               </table>
             </div>
-
             <div className="flex items-center justify-between border-t border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-4">
               <p className="flex items-center gap-2 text-sm text-emerald-300">
-                <CheckIcon />
-                {pendingRecords.length} record(s) ready to submit
+                <CheckIcon />{pendingRecords.length} record(s) ready to submit
               </p>
-              <button
-                onClick={handleFinalSubmit}
-                disabled={loading}
-                className={`${glassBtnPrimary} flex items-center gap-2`}
-              >
-                <CheckIcon />
-                {loading ? "Submitting…" : "Final Submit"}
+              <button onClick={handleFinalSubmit} disabled={loading}
+                className={`${glassBtnPrimary} flex items-center gap-2`}>
+                <CheckIcon />{loading ? "Submitting…" : "Final Submit"}
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Recent Records ── */}
+        {/* ── Recent Submitted Records ── */}
         <div className={`mt-6 overflow-hidden ${glassCard}`}>
+          {/* Section header */}
           <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
-            <h2 className="text-lg font-semibold text-white">
-              Recent Submitted Records
-            </h2>
-            <button
-              onClick={loadRecent}
-              className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300"
-            >
-              ↻ Refresh
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-white">Recent Submitted Records</h2>
+              {recentData.length > 0 && (
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-zinc-400">
+                  {recentData.length} record{recentData.length !== 1 ? "s" : ""} · last 3 days
+                </span>
+              )}
+            </div>
+            <button onClick={loadRecent}
+              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                <path d="M8 16H3v5" />
+              </svg>
+              Refresh
             </button>
           </div>
 
           {recentData.length === 0 ? (
-            <p className="p-8 text-center text-zinc-500">
-              No submitted records found in the last 3 days.
-            </p>
+            /* Empty state */
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="1.5" className="text-zinc-600">
+                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                  <rect x="9" y="3" width="6" height="4" rx="1" />
+                  <path d="M9 12h6M9 16h4" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-zinc-500">No submitted records</p>
+              <p className="text-xs text-zinc-600">Records from the last 3 days will appear here</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-white/10 bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-400">
-                    {[
-                      "Profile","Type","Surface","Length","Pack Date",
-                      "Premium","Non-Brand","Weight Bar","Action",
-                    ].map((h) => (
-                      <th key={h} className="px-3 py-3">{h}</th>
-                    ))}
+                    <th className="px-3 py-3">Profile</th>
+                    <th className="px-3 py-3">Type</th>
+                    <th className="px-3 py-3">Surface</th>
+                    <th className="px-3 py-3">Length</th>
+                    <th className="px-3 py-3">Prod Date</th>
+                    <th className="px-3 py-3">Pack Date</th>
+                    <th className="px-3 py-3">Premium</th>
+                    <th className="px-3 py-3">Non-Brand</th>
+                    <th className="px-3 py-3">Weight Bar</th>
+                    <th className="px-3 py-3">Operator</th>
+                    <th className="px-3 py-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {recentData.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-b border-white/5 transition hover:bg-white/5"
-                    >
-                      <td className="px-3 py-3 font-bold text-emerald-400">
-                        {row.profile}
+                  {recentData.map((row, idx) => (
+                    <tr key={row.id}
+                      className={`border-b border-white/5 transition hover:bg-white/5 ${idx % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
+                      <td className="px-3 py-3">
+                        <span className="font-bold text-emerald-400">{row.profile}</span>
                       </td>
-                      <td className="px-3 py-3 text-zinc-300">
-                        {row.production_type}
-                      </td>
+                      <td className="px-3 py-3 text-zinc-300">{row.production_type}</td>
                       <td className="px-3 py-3 text-zinc-300">{row.surface}</td>
                       <td className="px-3 py-3 text-zinc-300">{row.length}m</td>
-                      <td className="px-3 py-3 text-zinc-300">
-                        {row.packing_date}
-                      </td>
+                      <td className="px-3 py-3 text-zinc-400 text-xs">{row.production_date}</td>
+                      <td className="px-3 py-3 text-zinc-300">{row.packing_date}</td>
                       <BadgeCell enabled={row.premium_enabled} color="emerald" />
                       <BadgeCell enabled={row.nonbrand_enabled} color="blue" />
                       <BadgeCell enabled={row.weightbar_enabled} color="purple" />
-                      <td className="px-3 py-3 text-right">
-                        <button
-                          onClick={() => editRecentRecord(row)}
-                          className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300"
-                        >
-                          Edit
-                        </button>
+                      <td className="px-3 py-3 text-xs text-zinc-500">
+                        {row.operator ?? "—"}
+                      </td>
+                      {/* Actions */}
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          {/* Edit */}
+                          <button
+                            onClick={() => editRecentRecord(row)}
+                            title="Edit record"
+                            className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-blue-400 transition hover:border-blue-500 hover:bg-blue-500/10 hover:text-blue-300"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2"
+                              className="transition group-hover:scale-110">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            Edit
+                          </button>
+                          {/* Delete */}
+                          <button
+                            onClick={() => confirmDeleteRecent(row)}
+                            title="Delete record"
+                            className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500/10 hover:text-red-300"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2"
+                              className="transition group-hover:scale-110">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6M14 11v6" />
+                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -791,45 +856,27 @@ export default function AnodizingPacking() {
         </div>
       </div>
 
-      {/* ── Modal ── */}
+      {/* ── Add / Edit Modal ── */}
       {showModal && (
         <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
-            onClick={closeModal}
-          />
-
-          {/* Dialog */}
+          <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" onClick={closeModal} />
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4">
-              <div
-                className={`my-8 w-full max-w-2xl overflow-hidden ${glassCard}`}
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className={`my-8 w-full max-w-2xl overflow-hidden ${glassCard}`}
+                onClick={(e) => e.stopPropagation()}>
+
                 {/* Modal header */}
                 <div className="sticky top-0 z-10 border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-4 backdrop-blur-xl">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-bold uppercase tracking-widest text-emerald-400">
-                      {editingPendingId
-                        ? "Edit Pending Record"
-                        : editingRecentId
-                        ? "Edit Submitted Record"
-                        : "New Packing Record"}
+                      {editingPendingId ? "Edit Pending Record"
+                        : editingRecentId ? "Edit Submitted Record"
+                          : "New Packing Record"}
                     </h3>
-                    <button
-                      onClick={closeModal}
-                      aria-label="Close"
-                      className="rounded p-1 text-zinc-400 transition hover:text-white"
-                    >
-                      <svg
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
+                    <button onClick={closeModal} aria-label="Close"
+                      className="rounded p-1 text-zinc-400 transition hover:text-white">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2">
                         <path d="M18 6L6 18M6 6l12 12" />
                       </svg>
                     </button>
@@ -841,49 +888,30 @@ export default function AnodizingPacking() {
                   {/* Dates */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label="Production Date">
-                      <input
-                        type="date"
-                        value={form.prodDate}
+                      <input type="date" value={form.prodDate}
                         onChange={(e) => setField("prodDate", e.target.value)}
-                        required
-                        className={glassInput}
-                      />
+                        required className={glassInput} />
                     </Field>
                     <Field label="Packing Date">
-                      <input
-                        type="date"
-                        value={form.packDate}
+                      <input type="date" value={form.packDate}
                         onChange={(e) => setField("packDate", e.target.value)}
-                        required
-                        className={glassInput}
-                      />
+                        required className={glassInput} />
                     </Field>
                   </div>
 
-                  {/* Length + Prod Type */}
+                  {/* Length + Type */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label="Length">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={form.length}
+                      <input type="number" step="0.01" value={form.length}
                         onChange={(e) => setField("length", e.target.value)}
-                        placeholder="0.00"
-                        required
-                        className={glassInput}
-                      />
+                        placeholder="0.00" required className={glassInput} />
                     </Field>
                     <Field label="Production Type">
-                      <select
-                        value={form.prodType}
+                      <select value={form.prodType}
                         onChange={(e) => setField("prodType", e.target.value)}
-                        required
-                        className={glassInput}
-                      >
+                        required className={glassInput}>
                         <option value="" disabled>Select</option>
-                        {PROD_TYPES.map((t) => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
+                        {PROD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </Field>
                   </div>
@@ -891,34 +919,26 @@ export default function AnodizingPacking() {
                   {/* Profile autocomplete */}
                   <Field label="Profile">
                     <div ref={profileRef} className="relative">
-                      <input
-                        type="text"
-                        value={profileSearch}
+                      <input type="text" value={profileSearch}
                         onChange={(e) => {
                           setProfileSearch(e.target.value);
                           setField("profile", e.target.value);
                           setShowProfileDropdown(true);
                         }}
                         onFocus={() => setShowProfileDropdown(true)}
-                        placeholder="Search profile…"
-                        autoComplete="off"
-                        required
-                        className={glassInput}
-                      />
+                        placeholder="Search profile…" autoComplete="off"
+                        required className={glassInput} />
                       {showProfileDropdown && filteredProfiles.length > 0 && (
                         <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl">
                           {filteredProfiles.map((p) => (
-                            <li
-                              key={p}
+                            <li key={p}
                               onMouseDown={(e) => {
-                                // use mousedown so it fires before blur
                                 e.preventDefault();
                                 setField("profile", p);
                                 setProfileSearch(p);
                                 setShowProfileDropdown(false);
                               }}
-                              className="cursor-pointer border-b border-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:bg-emerald-500/20 hover:text-emerald-300"
-                            >
+                              className="cursor-pointer border-b border-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:bg-emerald-500/20 hover:text-emerald-300">
                               {p}
                             </li>
                           ))}
@@ -929,16 +949,11 @@ export default function AnodizingPacking() {
 
                   {/* Surface */}
                   <Field label="Surface">
-                    <select
-                      value={form.surface}
+                    <select value={form.surface}
                       onChange={(e) => setField("surface", e.target.value)}
-                      required
-                      className={glassInput}
-                    >
+                      required className={glassInput}>
                       <option value="" disabled>Select</option>
-                      {SURFACES.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
+                      {SURFACES.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </Field>
 
@@ -948,127 +963,66 @@ export default function AnodizingPacking() {
                       Packing Configuration
                     </p>
 
-                    {/* Premium Full Pack */}
-                    <SectionToggle
-                      label="Premium Full Pack"
-                      checked={flags.premiumEnabled}
-                      onChange={(v) => setFlag("premiumEnabled", v)}
-                      borderHover="hover:border-emerald-500/30"
-                    >
+                    {/* Premium */}
+                    <SectionToggle label="Premium Full Pack" checked={flags.premiumEnabled}
+                      onChange={(v) => setFlag("premiumEnabled", v)}>
                       <div className="mt-2 space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
                         <Field label="Pack No">
-                          <input
-                            type="text"
-                            value={form.premiumPackNo}
-                            onChange={(e) =>
-                              setField("premiumPackNo", numericOnly(e.target.value))
-                            }
-                            className={`${glassInput} py-2`}
-                          />
+                          <input type="text" value={form.premiumPackNo}
+                            onChange={(e) => setField("premiumPackNo", numericOnly(e.target.value))}
+                            className={`${glassInput} py-2`} />
                         </Field>
                         <div className="grid grid-cols-2 gap-3">
                           <Field label="One Bundle Qty">
-                            <input
-                              type="number"
-                              value={form.premiumOneQty}
+                            <input type="number" value={form.premiumOneQty}
                               onChange={(e) => setField("premiumOneQty", e.target.value)}
-                              className={`${glassInput} py-2`}
-                            />
+                              className={`${glassInput} py-2`} />
                           </Field>
                           <Field label="Total Bundles">
-                            <input
-                              type="number"
-                              value={form.premiumTotalBundle}
-                              onChange={(e) =>
-                                setField("premiumTotalBundle", e.target.value)
-                              }
-                              className={`${glassInput} py-2`}
-                            />
+                            <input type="number" value={form.premiumTotalBundle}
+                              onChange={(e) => setField("premiumTotalBundle", e.target.value)}
+                              className={`${glassInput} py-2`} />
                           </Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <Field label="Total Qty">
-                            <input
-                              type="number"
-                              value={calcPremiumTotal()}
-                              readOnly
-                              className={`${glassInput} bg-black/40 py-2`}
-                            />
+                            <input type="number" value={calcPremiumTotal()} readOnly
+                              className={`${glassInput} bg-black/40 py-2`} />
                           </Field>
                           <Field label="Avg Weight">
-                            <input
-                              type="number"
-                              step="0.001"
-                              value={form.premiumAvgWeight}
-                              onChange={(e) =>
-                                setField("premiumAvgWeight", e.target.value)
-                              }
-                              className={`${glassInput} py-2`}
-                            />
+                            <input type="number" step="0.001" value={form.premiumAvgWeight}
+                              onChange={(e) => setField("premiumAvgWeight", e.target.value)}
+                              className={`${glassInput} py-2`} />
                           </Field>
                         </div>
-
-                        {/* Premium Pcs toggle */}
                         <label className="flex cursor-pointer items-center gap-2 border-t border-emerald-500/10 pt-2">
-                          <input
-                            type="checkbox"
-                            checked={flags.premiumPcsEnabled}
-                            onChange={(e) =>
-                              setFlag("premiumPcsEnabled", e.target.checked)
-                            }
-                            className="h-4 w-4 rounded accent-purple-500"
-                          />
-                          <span className="text-[11px] font-black uppercase text-zinc-500">
-                            Premium Pcs Details
-                          </span>
+                          <input type="checkbox" checked={flags.premiumPcsEnabled}
+                            onChange={(e) => setFlag("premiumPcsEnabled", e.target.checked)}
+                            className="h-4 w-4 rounded accent-purple-500" />
+                          <span className="text-[11px] font-black uppercase text-zinc-500">Premium Pcs Details</span>
                         </label>
-
                         {flags.premiumPcsEnabled && (
                           <div className="space-y-2 rounded-xl border border-white/5 bg-black/20 p-3">
                             <Field label="Pcs Pack No">
-                              <input
-                                type="text"
-                                value={form.premiumPcsPackNo}
-                                onChange={(e) =>
-                                  setField(
-                                    "premiumPcsPackNo",
-                                    numericOnly(e.target.value, true)
-                                  )
-                                }
-                                className={`${glassInput} py-1.5 text-xs`}
-                              />
+                              <input type="text" value={form.premiumPcsPackNo}
+                                onChange={(e) => setField("premiumPcsPackNo", numericOnly(e.target.value, true))}
+                                className={`${glassInput} py-1.5 text-xs`} />
                             </Field>
                             <div className="grid grid-cols-3 gap-2">
                               <Field label="Bundle Qty">
-                                <input
-                                  type="number"
-                                  value={form.premiumPcsOneQty}
-                                  onChange={(e) =>
-                                    setField("premiumPcsOneQty", e.target.value)
-                                  }
-                                  className={`${glassInput} py-1.5 text-xs`}
-                                />
+                                <input type="number" value={form.premiumPcsOneQty}
+                                  onChange={(e) => setField("premiumPcsOneQty", e.target.value)}
+                                  className={`${glassInput} py-1.5 text-xs`} />
                               </Field>
                               <Field label="Total Qty">
-                                <input
-                                  type="number"
-                                  value={form.premiumPcsTotalQty}
-                                  onChange={(e) =>
-                                    setField("premiumPcsTotalQty", e.target.value)
-                                  }
-                                  className={`${glassInput} py-1.5 text-xs`}
-                                />
+                                <input type="number" value={form.premiumPcsTotalQty}
+                                  onChange={(e) => setField("premiumPcsTotalQty", e.target.value)}
+                                  className={`${glassInput} py-1.5 text-xs`} />
                               </Field>
                               <Field label="Avg Weight">
-                                <input
-                                  type="number"
-                                  step="0.001"
-                                  value={form.premiumPcsAvgWeight}
-                                  onChange={(e) =>
-                                    setField("premiumPcsAvgWeight", e.target.value)
-                                  }
-                                  className={`${glassInput} py-1.5 text-xs`}
-                                />
+                                <input type="number" step="0.001" value={form.premiumPcsAvgWeight}
+                                  onChange={(e) => setField("premiumPcsAvgWeight", e.target.value)}
+                                  className={`${glassInput} py-1.5 text-xs`} />
                               </Field>
                             </div>
                           </div>
@@ -1076,128 +1030,67 @@ export default function AnodizingPacking() {
                       </div>
                     </SectionToggle>
 
-                    {/* Non Brand Full Pack */}
-                    <SectionToggle
-                      label="Non Brand Full Pack"
-                      checked={flags.nonBrandEnabled}
+                    {/* Non Brand */}
+                    <SectionToggle label="Non Brand Full Pack" checked={flags.nonBrandEnabled}
                       onChange={(v) => setFlag("nonBrandEnabled", v)}
-                      borderHover="hover:border-white/30"
-                    >
+                      borderHover="hover:border-white/30">
                       <div className="mt-2 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
                         <Field label="Pack No">
-                          <input
-                            type="text"
-                            value={form.nonBrandPackNo}
-                            onChange={(e) =>
-                              setField("nonBrandPackNo", numericOnly(e.target.value))
-                            }
-                            className={`${glassInput} py-2`}
-                          />
+                          <input type="text" value={form.nonBrandPackNo}
+                            onChange={(e) => setField("nonBrandPackNo", numericOnly(e.target.value))}
+                            className={`${glassInput} py-2`} />
                         </Field>
                         <div className="grid grid-cols-2 gap-3">
                           <Field label="One Bundle Qty">
-                            <input
-                              type="number"
-                              value={form.nonBrandOneQty}
-                              onChange={(e) =>
-                                setField("nonBrandOneQty", e.target.value)
-                              }
-                              className={`${glassInput} py-2`}
-                            />
+                            <input type="number" value={form.nonBrandOneQty}
+                              onChange={(e) => setField("nonBrandOneQty", e.target.value)}
+                              className={`${glassInput} py-2`} />
                           </Field>
                           <Field label="Total Bundles">
-                            <input
-                              type="number"
-                              value={form.nonBrandTotalBundle}
-                              onChange={(e) =>
-                                setField("nonBrandTotalBundle", e.target.value)
-                              }
-                              className={`${glassInput} py-2`}
-                            />
+                            <input type="number" value={form.nonBrandTotalBundle}
+                              onChange={(e) => setField("nonBrandTotalBundle", e.target.value)}
+                              className={`${glassInput} py-2`} />
                           </Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <Field label="Total Qty">
-                            <input
-                              type="number"
-                              value={calcNonBrandTotal()}
-                              readOnly
-                              className={`${glassInput} bg-black/40 py-2`}
-                            />
+                            <input type="number" value={calcNonBrandTotal()} readOnly
+                              className={`${glassInput} bg-black/40 py-2`} />
                           </Field>
                           <Field label="Avg Weight">
-                            <input
-                              type="number"
-                              step="0.001"
-                              value={form.nonBrandAvgWeight}
-                              onChange={(e) =>
-                                setField("nonBrandAvgWeight", e.target.value)
-                              }
-                              className={`${glassInput} py-2`}
-                            />
+                            <input type="number" step="0.001" value={form.nonBrandAvgWeight}
+                              onChange={(e) => setField("nonBrandAvgWeight", e.target.value)}
+                              className={`${glassInput} py-2`} />
                           </Field>
                         </div>
-
                         <label className="flex cursor-pointer items-center gap-2 border-t border-white/10 pt-2">
-                          <input
-                            type="checkbox"
-                            checked={flags.nonBrandPcsEnabled}
-                            onChange={(e) =>
-                              setFlag("nonBrandPcsEnabled", e.target.checked)
-                            }
-                            className="h-4 w-4 rounded accent-purple-500"
-                          />
-                          <span className="text-[11px] font-black uppercase text-zinc-500">
-                            Non Brand Pcs Details
-                          </span>
+                          <input type="checkbox" checked={flags.nonBrandPcsEnabled}
+                            onChange={(e) => setFlag("nonBrandPcsEnabled", e.target.checked)}
+                            className="h-4 w-4 rounded accent-purple-500" />
+                          <span className="text-[11px] font-black uppercase text-zinc-500">Non Brand Pcs Details</span>
                         </label>
-
                         {flags.nonBrandPcsEnabled && (
                           <div className="space-y-2 rounded-xl border border-white/5 bg-black/20 p-3">
                             <Field label="Pcs Pack No">
-                              <input
-                                type="text"
-                                value={form.nonBrandPcsPackNo}
-                                onChange={(e) =>
-                                  setField(
-                                    "nonBrandPcsPackNo",
-                                    numericOnly(e.target.value, true)
-                                  )
-                                }
-                                className={`${glassInput} py-1.5 text-xs`}
-                              />
+                              <input type="text" value={form.nonBrandPcsPackNo}
+                                onChange={(e) => setField("nonBrandPcsPackNo", numericOnly(e.target.value, true))}
+                                className={`${glassInput} py-1.5 text-xs`} />
                             </Field>
                             <div className="grid grid-cols-3 gap-2">
                               <Field label="Bundle Qty">
-                                <input
-                                  type="number"
-                                  value={form.nonBrandPcsOneQty}
-                                  onChange={(e) =>
-                                    setField("nonBrandPcsOneQty", e.target.value)
-                                  }
-                                  className={`${glassInput} py-1.5 text-xs`}
-                                />
+                                <input type="number" value={form.nonBrandPcsOneQty}
+                                  onChange={(e) => setField("nonBrandPcsOneQty", e.target.value)}
+                                  className={`${glassInput} py-1.5 text-xs`} />
                               </Field>
                               <Field label="Total Qty">
-                                <input
-                                  type="number"
-                                  value={form.nonBrandPcsTotalQty}
-                                  onChange={(e) =>
-                                    setField("nonBrandPcsTotalQty", e.target.value)
-                                  }
-                                  className={`${glassInput} py-1.5 text-xs`}
-                                />
+                                <input type="number" value={form.nonBrandPcsTotalQty}
+                                  onChange={(e) => setField("nonBrandPcsTotalQty", e.target.value)}
+                                  className={`${glassInput} py-1.5 text-xs`} />
                               </Field>
                               <Field label="Avg Weight">
-                                <input
-                                  type="number"
-                                  step="0.001"
-                                  value={form.nonBrandPcsAvgWeight}
-                                  onChange={(e) =>
-                                    setField("nonBrandPcsAvgWeight", e.target.value)
-                                  }
-                                  className={`${glassInput} py-1.5 text-xs`}
-                                />
+                                <input type="number" step="0.001" value={form.nonBrandPcsAvgWeight}
+                                  onChange={(e) => setField("nonBrandPcsAvgWeight", e.target.value)}
+                                  className={`${glassInput} py-1.5 text-xs`} />
                               </Field>
                             </div>
                           </div>
@@ -1205,46 +1098,26 @@ export default function AnodizingPacking() {
                       </div>
                     </SectionToggle>
 
-                    {/* Weight Bar Pack */}
-                    <SectionToggle
-                      label="Weight Bar Pack"
-                      checked={flags.weightBarEnabled}
+                    {/* Weight Bar */}
+                    <SectionToggle label="Weight Bar Pack" checked={flags.weightBarEnabled}
                       onChange={(v) => setFlag("weightBarEnabled", v)}
-                      accentClass="accent-blue-500"
-                      borderHover="hover:border-blue-500/30"
-                    >
+                      accentClass="accent-blue-500" borderHover="hover:border-blue-500/30">
                       <div className="mt-2 space-y-3 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4">
                         <Field label="Pack No">
-                          <input
-                            type="text"
-                            value={form.weightBarPackNo}
-                            onChange={(e) =>
-                              setField("weightBarPackNo", numericOnly(e.target.value))
-                            }
-                            className={`${glassInput} py-2`}
-                          />
+                          <input type="text" value={form.weightBarPackNo}
+                            onChange={(e) => setField("weightBarPackNo", numericOnly(e.target.value))}
+                            className={`${glassInput} py-2`} />
                         </Field>
                         <div className="grid grid-cols-2 gap-3">
                           <Field label="Bundle Qty">
-                            <input
-                              type="number"
-                              value={form.weightBarBundleQty}
-                              onChange={(e) =>
-                                setField("weightBarBundleQty", e.target.value)
-                              }
-                              className={`${glassInput} py-2`}
-                            />
+                            <input type="number" value={form.weightBarBundleQty}
+                              onChange={(e) => setField("weightBarBundleQty", e.target.value)}
+                              className={`${glassInput} py-2`} />
                           </Field>
                           <Field label="Avg Weight">
-                            <input
-                              type="number"
-                              step="0.001"
-                              value={form.weightBarAvgWeight}
-                              onChange={(e) =>
-                                setField("weightBarAvgWeight", e.target.value)
-                              }
-                              className={`${glassInput} py-2`}
-                            />
+                            <input type="number" step="0.001" value={form.weightBarAvgWeight}
+                              onChange={(e) => setField("weightBarAvgWeight", e.target.value)}
+                              className={`${glassInput} py-2`} />
                           </Field>
                         </div>
                       </div>
@@ -1253,35 +1126,19 @@ export default function AnodizingPacking() {
 
                   {/* Action buttons */}
                   <div className="mt-6 flex gap-3">
-                    <button
-                      type="button"
-                      onClick={closeModal}
-                      className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-bold uppercase text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300"
-                    >
+                    <button type="button" onClick={closeModal}
+                      className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-bold uppercase text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300">
                       Cancel
                     </button>
-
                     {editingRecentId !== null ? (
-                      <button
-                        type="button"
-                        onClick={handleUpdateRecent}
-                        disabled={loading}
-                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
-                      >
+                      <button type="button" onClick={handleUpdateRecent} disabled={loading}
+                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50">
                         {loading ? "Updating…" : "Update Record"}
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={handleAddToPending}
-                        disabled={loading}
-                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
-                      >
-                        {loading
-                          ? "Saving…"
-                          : editingPendingId
-                          ? "Update Pending"
-                          : "Add to Pending"}
+                      <button type="button" onClick={handleAddToPending} disabled={loading}
+                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50">
+                        {loading ? "Saving…" : editingPendingId ? "Update Pending" : "Add to Pending"}
                       </button>
                     )}
                   </div>
@@ -1292,73 +1149,33 @@ export default function AnodizingPacking() {
         </>
       )}
 
+      {/* ── Delete Confirm Modal ── */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          record={deleteTarget}
+          onConfirm={handleDeleteRecent}
+          onCancel={() => setDeleteTarget(null)}
+          deleting={deleting}
+        />
+      )}
+
       {showCloudSync && <CloudSync />}
 
-      {/* Success overlay */}
+      {/* ── Success overlay ── */}
       {showSuccess && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 backdrop-blur-xl">
           <div className="rounded-3xl border border-white/10 bg-white/10 p-10 text-center shadow-2xl backdrop-blur-2xl">
             <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full bg-emerald-500/20">
-              <svg
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                className="text-emerald-400"
-              >
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" className="text-emerald-400">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-white">
-              Packing Record Saved
-            </h2>
-            <p className="mt-2 text-sm text-zinc-400">
-              Data synced to database successfully
-            </p>
+            <h2 className="text-2xl font-bold text-white">{successMessage}</h2>
+            <p className="mt-2 text-sm text-zinc-400">Data synced to database successfully</p>
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-// ─── Tiny shared components ────────────────────────────────────────────────────
-
-function CheckIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
-    </svg>
-  );
-}
-
-type BadgeColor = "emerald" | "blue" | "purple";
-
-function BadgeCell({ enabled, color }: { enabled: boolean; color: BadgeColor }) {
-  const styles: Record<BadgeColor, string> = {
-    emerald: "bg-emerald-500/20 text-emerald-300",
-    blue: "bg-blue-500/20 text-blue-300",
-    purple: "bg-purple-500/20 text-purple-300",
-  };
-
-  return (
-    <td className="px-3 py-3">
-      {enabled ? (
-        <span className={`rounded-full px-2 py-0.5 text-xs ${styles[color]}`}>
-          Yes
-        </span>
-      ) : (
-        <span className="text-zinc-600">—</span>
-      )}
-    </td>
   );
 }
