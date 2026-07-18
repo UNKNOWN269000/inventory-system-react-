@@ -94,20 +94,40 @@ interface PackingFlags {
   nonBrandPcsEnabled: boolean;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Date helpers ─────────────────────────────────────────────────────────────
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+/**
+ * Returns local YYYY-MM-DD string for a given Date object.
+ * Avoids UTC conversion issues from .toISOString()
+ */
+function localDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
-/** Returns YYYY-MM-DD that is `n` days before today (local-safe) */
-const daysAgoStr = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  // Use local date parts to avoid UTC-shift cutting off today
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-};
+/**
+ * Returns exactly 3 local date strings:
+ * [today, yesterday, day-before-yesterday]
+ */
+function getThreeDays(): [string, string, string] {
+  const today = new Date();
+
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const dayBefore = new Date(today);
+  dayBefore.setDate(today.getDate() - 2);
+
+  return [
+    localDateStr(today),
+    localDateStr(yesterday),
+    localDateStr(dayBefore),
+  ];
+}
+
+// ─── Form helpers ─────────────────────────────────────────────────────────────
 
 const EMPTY_FORM: FormState = {
   prodDate: "", packDate: "", length: "", prodType: "", profile: "", surface: "",
@@ -174,7 +194,7 @@ const glassBtnPrimary =
   "text-sm font-bold text-black shadow-lg shadow-emerald-500/20 transition " +
   "hover:shadow-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed";
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Small components ─────────────────────────────────────────────────────────
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -212,9 +232,9 @@ function CheckIcon() {
   );
 }
 
-function SpinnerIcon() {
+function SpinnerIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24"
+    <svg className="animate-spin" width={size} height={size} viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
     </svg>
@@ -284,15 +304,16 @@ function DeleteConfirmModal({ record, onConfirm, onCancel, deleting }: DeleteCon
               Are you sure you want to permanently delete this record?
             </p>
             <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-              {[
+              {([
                 ["Profile", record.profile],
                 ["Pack Date", record.packing_date],
                 ["Surface", record.surface],
                 ["Length", `${record.length}m`],
-              ].map(([label, value]) => (
+              ] as [string, string][]).map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-xs text-zinc-500">{label}</span>
-                  <span className={`text-sm ${label === "Profile" ? "font-bold text-emerald-400" : "text-zinc-300"}`}>
+                  <span className={`text-sm ${label === "Profile"
+                    ? "font-bold text-emerald-400" : "text-zinc-300"}`}>
                     {value}
                   </span>
                 </div>
@@ -307,13 +328,39 @@ function DeleteConfirmModal({ record, onConfirm, onCancel, deleting }: DeleteCon
             <button onClick={onConfirm} disabled={deleting}
               className="flex-1 rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-500/20 transition hover:shadow-red-500/40 disabled:opacity-50 disabled:cursor-not-allowed">
               {deleting
-                ? <span className="flex items-center justify-center gap-2"><SpinnerIcon />Deleting…</span>
+                ? <span className="flex items-center justify-center gap-2">
+                    <SpinnerIcon />Deleting…
+                  </span>
                 : "Delete"}
             </button>
           </div>
         </div>
       </div>
     </>
+  );
+}
+
+// ─── Day label helper ─────────────────────────────────────────────────────────
+
+function dayLabel(dateStr: string, today: string, yesterday: string): string {
+  if (dateStr === today) return "Today";
+  if (dateStr === yesterday) return "Yesterday";
+  return "Day Before";
+}
+
+function DayLabelBadge({ date, today, yesterday }: {
+  date: string; today: string; yesterday: string;
+}) {
+  const label = dayLabel(date, today, yesterday);
+  const styles: Record<string, string> = {
+    Today: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    Yesterday: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    "Day Before": "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+  };
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${styles[label]}`}>
+      {label}
+    </span>
   );
 }
 
@@ -346,6 +393,9 @@ export default function AnodizingPacking() {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [flags, setFlags] = useState<PackingFlags>({ ...EMPTY_FLAGS });
 
+  // Compute the 3 valid dates once per render (stable across the session)
+  const [today, yesterday, dayBefore] = getThreeDays();
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const filteredProfiles = PROFILES.filter((p) =>
@@ -371,30 +421,24 @@ export default function AnodizingPacking() {
   }, []);
 
   /**
-   * Loads submitted records from the last 3 days.
-   *
-   * KEY FIX: filter on `packing_date` (correct column name) using a
-   * local-timezone-safe cutoff so today's records are always included.
-   *
-   * We do NOT filter by packing_date at all — instead we filter by
-   * `created_at` >= 3 days ago so records submitted today always appear
-   * regardless of what pack_date the user entered.
+   * KEY FIX:
+   * - Filter by `packing_date` (correct column name)
+   * - Use `.in("packing_date", [today, yesterday, dayBefore])` to match
+   *   EXACTLY these 3 local dates — no timezone drift, no range issues
+   * - Dates are computed using local getFullYear/getMonth/getDate
    */
   const loadRecent = useCallback(async () => {
     setRecentLoading(true);
     try {
-      // Use created_at for the window so "submitted today" always shows,
-      // even if the user entered an older packing_date on the form.
-      const cutoff = daysAgoStr(3); // local-tz safe, e.g. "2025-01-10"
+      const [t, y, db] = getThreeDays();
 
       const { data, error } = await supabase
         .from("anodizing_packing")
         .select("*")
         .eq("submitted", true)
-        .gte("packing_date", cutoff)   // ✅ correct column: packing_date
+        .in("packing_date", [t, y, db])          // ✅ exact match on 3 dates
         .order("packing_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(100);
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setRecentData(data ?? []);
@@ -470,7 +514,7 @@ export default function AnodizingPacking() {
   // ── Modal helpers ─────────────────────────────────────────────────────────────
 
   const resetModalState = () => {
-    setForm({ ...EMPTY_FORM, prodDate: todayStr(), packDate: todayStr() });
+    setForm({ ...EMPTY_FORM, prodDate: today, packDate: today });
     setFlags({ ...EMPTY_FLAGS });
     setProfileSearch("");
     setShowProfileDropdown(false);
@@ -562,11 +606,8 @@ export default function AnodizingPacking() {
       setShowCloudSync(false);
       setSuccessMessage("All Records Submitted");
       setShowSuccess(true);
-
-      // Clear pending + reload recent so submitted records appear immediately
       setPendingRecords([]);
       await loadRecent();
-
       setTimeout(() => setShowSuccess(false), 2000);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
@@ -580,7 +621,6 @@ export default function AnodizingPacking() {
     if (editingRecentId === null) return;
     const err = validateForm();
     if (err) return alert(err);
-
     setShowCloudSync(true);
     setLoading(true);
     try {
@@ -589,14 +629,12 @@ export default function AnodizingPacking() {
         .update(buildRecord(true))
         .eq("id", editingRecentId);
       if (error) throw error;
-
       await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
       setSuccessMessage("Record Updated Successfully");
       setShowSuccess(true);
       closeModal();
       await loadRecent();
-
       setTimeout(() => setShowSuccess(false), 2000);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
@@ -644,6 +682,17 @@ export default function AnodizingPacking() {
 
   const numericOnly = (v: string, allowComma = false) =>
     allowComma ? v.replace(/[^0-9,-]/g, "") : v.replace(/[^0-9-]/g, "");
+
+  // ── Group recent data by packing_date ─────────────────────────────────────────
+
+  const groupedRecent: Record<string, any[]> = {};
+  for (const row of recentData) {
+    const d = row.packing_date ?? "unknown";
+    if (!groupedRecent[d]) groupedRecent[d] = [];
+    groupedRecent[d].push(row);
+  }
+  // Sort groups: today first, then yesterday, then day before
+  const sortedDates = [today, yesterday, dayBefore].filter((d) => groupedRecent[d]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -708,7 +757,7 @@ export default function AnodizingPacking() {
         {/* Pending Records */}
         {pendingRecords.length > 0 && (
           <div className={`mt-6 overflow-hidden ${glassCard}`}>
-            <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
+            <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 px-6 py-3">
               <h2 className="text-lg font-semibold text-white">Pending Records</h2>
               <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-400">
                 {pendingRecords.length} pending
@@ -718,7 +767,7 @@ export default function AnodizingPacking() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-white/10 bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-400">
-                    {["Profile","Type","Surface","Length","Pack Date","Premium","Non-Brand","Weight Bar","Actions"].map(h => (
+                    {["Profile","Type","Surface","Length","Pack Date","Premium","Non-Brand","Wt Bar","Actions"].map(h => (
                       <th key={h} className="px-3 py-3">{h}</th>
                     ))}
                   </tr>
@@ -751,7 +800,7 @@ export default function AnodizingPacking() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between border-t border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-4">
+            <div className="flex items-center justify-between border-t border-white/10 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 px-6 py-4">
               <p className="flex items-center gap-2 text-sm text-emerald-300">
                 <CheckIcon />{pendingRecords.length} record(s) ready to submit
               </p>
@@ -766,29 +815,34 @@ export default function AnodizingPacking() {
 
         {/* ── Recent Submitted Records ── */}
         <div className={`mt-6 overflow-hidden ${glassCard}`}>
+
           {/* Section header */}
           <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-lg font-semibold text-white">Recent Submitted Records</h2>
-              {/* Date range badge */}
-              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] text-zinc-500">
-                {daysAgoStr(3)} → {todayStr()}
-              </span>
+              {/* Date pills */}
+              <div className="flex items-center gap-1.5">
+                {[
+                  { label: "Today", date: today, color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+                  { label: "Yesterday", date: yesterday, color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
+                  { label: "Day Before", date: dayBefore, color: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30" },
+                ].map(({ label, date, color }) => (
+                  <span key={label}
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${color}`}
+                    title={date}>
+                    {label}
+                  </span>
+                ))}
+              </div>
               {recentData.length > 0 && (
-                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-zinc-400">
                   {recentData.length} record{recentData.length !== 1 ? "s" : ""}
                 </span>
               )}
             </div>
-            {/* Refresh button */}
-            <button
-              onClick={loadRecent}
-              disabled={recentLoading}
-              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300 disabled:opacity-50"
-            >
-              {recentLoading ? (
-                <SpinnerIcon />
-              ) : (
+            <button onClick={loadRecent} disabled={recentLoading}
+              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300 disabled:opacity-50">
+              {recentLoading ? <SpinnerIcon size={12} /> : (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2.5">
                   <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
@@ -801,16 +855,15 @@ export default function AnodizingPacking() {
             </button>
           </div>
 
+          {/* Loading skeleton */}
           {recentLoading && recentData.length === 0 ? (
-            /* Skeleton loader */
-            <div className="space-y-px">
+            <div className="space-y-px p-2">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 px-6 py-4 border-b border-white/5">
-                  <div className="h-4 w-20 animate-pulse rounded bg-white/10" />
-                  <div className="h-4 w-12 animate-pulse rounded bg-white/10" />
-                  <div className="h-4 w-16 animate-pulse rounded bg-white/10" />
-                  <div className="h-4 w-10 animate-pulse rounded bg-white/10" />
-                  <div className="h-4 w-24 animate-pulse rounded bg-white/10" />
+                <div key={i} className="flex items-center gap-4 rounded-lg px-4 py-3">
+                  {[20, 12, 16, 10, 24].map((w, j) => (
+                    <div key={j}
+                      className={`h-4 w-${w} animate-pulse rounded bg-white/10`} />
+                  ))}
                 </div>
               ))}
             </div>
@@ -827,77 +880,86 @@ export default function AnodizingPacking() {
               </div>
               <p className="text-sm font-medium text-zinc-500">No submitted records</p>
               <p className="text-xs text-zinc-600">
-                Records packed between {daysAgoStr(3)} and {todayStr()} will appear here
+                Showing packing dates: {dayBefore}, {yesterday}, {today}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-400">
-                    <th className="px-3 py-3">Profile</th>
-                    <th className="px-3 py-3">Type</th>
-                    <th className="px-3 py-3">Surface</th>
-                    <th className="px-3 py-3">Length</th>
-                    <th className="px-3 py-3">Prod Date</th>
-                    <th className="px-3 py-3">Pack Date</th>
-                    <th className="px-3 py-3">Premium</th>
-                    <th className="px-3 py-3">Non-Brand</th>
-                    <th className="px-3 py-3">Wt Bar</th>
-                    <th className="px-3 py-3">Operator</th>
-                    <th className="px-3 py-3 text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentData.map((row, idx) => (
-                    <tr key={row.id}
-                      className={`border-b border-white/5 transition hover:bg-white/5 ${idx % 2 !== 0 ? "bg-white/[0.02]" : ""}`}>
-                      <td className="px-3 py-3 font-bold text-emerald-400">{row.profile}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.production_type}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.surface}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.length}m</td>
-                      <td className="px-3 py-3 text-xs text-zinc-500">{row.production_date}</td>
-                      <td className="px-3 py-3 text-zinc-300">{row.packing_date}</td>
-                      <BadgeCell enabled={row.premium_enabled} color="emerald" />
-                      <BadgeCell enabled={row.nonbrand_enabled} color="blue" />
-                      <BadgeCell enabled={row.weightbar_enabled} color="purple" />
-                      <td className="px-3 py-3 text-xs text-zinc-500">{row.operator ?? "—"}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          {/* Edit */}
-                          <button
-                            onClick={() => editRecentRecord(row)}
-                            className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-blue-400 transition hover:border-blue-500 hover:bg-blue-500/10 hover:text-blue-300"
-                          >
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                              stroke="currentColor" strokeWidth="2"
-                              className="transition group-hover:scale-110">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                            Edit
-                          </button>
-                          {/* Delete */}
-                          <button
-                            onClick={() => setDeleteTarget(row)}
-                            className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500/10 hover:text-red-300"
-                          >
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                              stroke="currentColor" strokeWidth="2"
-                              className="transition group-hover:scale-110">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                              <path d="M10 11v6M14 11v6" />
-                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                            </svg>
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            /* Grouped by packing date */
+            <div>
+              {sortedDates.map((dateKey) => (
+                <div key={dateKey}>
+                  {/* Date group header */}
+                  <div className="flex items-center gap-3 border-b border-white/5 bg-zinc-900/40 px-4 py-2">
+                    <DayLabelBadge date={dateKey} today={today} yesterday={yesterday} />
+                    <span className="text-xs font-semibold text-zinc-400">{dateKey}</span>
+                    <span className="ml-auto rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-zinc-500">
+                      {groupedRecent[dateKey].length} record{groupedRecent[dateKey].length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+
+                  {/* Records table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-white/5 text-[10px] uppercase tracking-wider text-zinc-500">
+                          <th className="px-4 py-2">Profile</th>
+                          <th className="px-4 py-2">Type</th>
+                          <th className="px-4 py-2">Surface</th>
+                          <th className="px-4 py-2">Length</th>
+                          <th className="px-4 py-2">Prod Date</th>
+                          <th className="px-4 py-2">Premium</th>
+                          <th className="px-4 py-2">Non-Brand</th>
+                          <th className="px-4 py-2">Wt Bar</th>
+                          <th className="px-4 py-2">Operator</th>
+                          <th className="px-4 py-2 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedRecent[dateKey].map((row, idx) => (
+                          <tr key={row.id}
+                            className={`border-b border-white/5 transition hover:bg-white/5 ${idx % 2 !== 0 ? "bg-white/[0.015]" : ""}`}>
+                            <td className="px-4 py-2.5 font-bold text-emerald-400">{row.profile}</td>
+                            <td className="px-4 py-2.5 text-zinc-300">{row.production_type}</td>
+                            <td className="px-4 py-2.5 text-zinc-300">{row.surface}</td>
+                            <td className="px-4 py-2.5 text-zinc-300">{row.length}m</td>
+                            <td className="px-4 py-2.5 text-xs text-zinc-500">{row.production_date}</td>
+                            <BadgeCell enabled={row.premium_enabled} color="emerald" />
+                            <BadgeCell enabled={row.nonbrand_enabled} color="blue" />
+                            <BadgeCell enabled={row.weightbar_enabled} color="purple" />
+                            <td className="px-4 py-2.5 text-xs text-zinc-500">{row.operator ?? "—"}</td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => editRecentRecord(row)}
+                                  className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-blue-400 transition hover:border-blue-500 hover:bg-blue-500/10 hover:text-blue-300">
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" strokeWidth="2"
+                                    className="transition group-hover:scale-110">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                  Edit
+                                </button>
+                                <button onClick={() => setDeleteTarget(row)}
+                                  className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500/10 hover:text-red-300">
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" strokeWidth="2"
+                                    className="transition group-hover:scale-110">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                    <path d="M10 11v6M14 11v6" />
+                                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                  </svg>
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -912,7 +974,6 @@ export default function AnodizingPacking() {
               <div className={`my-8 w-full max-w-2xl overflow-hidden ${glassCard}`}
                 onClick={(e) => e.stopPropagation()}>
 
-                {/* Modal header */}
                 <div className="sticky top-0 z-10 border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-4 backdrop-blur-xl">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-bold uppercase tracking-widest text-emerald-400">
@@ -930,10 +991,8 @@ export default function AnodizingPacking() {
                   </div>
                 </div>
 
-                {/* Modal body */}
                 <div className="max-h-[80vh] overflow-y-auto p-6 space-y-4">
 
-                  {/* Dates */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label="Production Date">
                       <input type="date" value={form.prodDate}
@@ -947,7 +1006,6 @@ export default function AnodizingPacking() {
                     </Field>
                   </div>
 
-                  {/* Length + Type */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label="Length">
                       <input type="number" step="0.01" value={form.length}
@@ -964,7 +1022,6 @@ export default function AnodizingPacking() {
                     </Field>
                   </div>
 
-                  {/* Profile autocomplete */}
                   <Field label="Profile">
                     <div ref={profileRef} className="relative">
                       <input type="text" value={profileSearch}
@@ -995,7 +1052,6 @@ export default function AnodizingPacking() {
                     </div>
                   </Field>
 
-                  {/* Surface */}
                   <Field label="Surface">
                     <select value={form.surface}
                       onChange={(e) => setField("surface", e.target.value)}
@@ -1005,13 +1061,11 @@ export default function AnodizingPacking() {
                     </select>
                   </Field>
 
-                  {/* Packing sections */}
                   <div>
                     <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-400">
                       Packing Configuration
                     </p>
 
-                    {/* Premium */}
                     <SectionToggle label="Premium Full Pack" checked={flags.premiumEnabled}
                       onChange={(v) => setFlag("premiumEnabled", v)}>
                       <div className="mt-2 space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
@@ -1080,7 +1134,6 @@ export default function AnodizingPacking() {
                       </div>
                     </SectionToggle>
 
-                    {/* Non Brand */}
                     <SectionToggle label="Non Brand Full Pack" checked={flags.nonBrandEnabled}
                       onChange={(v) => setFlag("nonBrandEnabled", v)}
                       borderHover="hover:border-white/30">
@@ -1150,7 +1203,6 @@ export default function AnodizingPacking() {
                       </div>
                     </SectionToggle>
 
-                    {/* Weight Bar */}
                     <SectionToggle label="Weight Bar Pack" checked={flags.weightBarEnabled}
                       onChange={(v) => setFlag("weightBarEnabled", v)}
                       accentClass="accent-blue-500" borderHover="hover:border-blue-500/30">
@@ -1176,7 +1228,6 @@ export default function AnodizingPacking() {
                     </SectionToggle>
                   </div>
 
-                  {/* Buttons */}
                   <div className="mt-6 flex gap-3">
                     <button type="button" onClick={closeModal}
                       className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-bold uppercase text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300">
@@ -1184,12 +1235,12 @@ export default function AnodizingPacking() {
                     </button>
                     {editingRecentId !== null ? (
                       <button type="button" onClick={handleUpdateRecent} disabled={loading}
-                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50">
+                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg disabled:opacity-50">
                         {loading ? "Updating…" : "Update Record"}
                       </button>
                     ) : (
                       <button type="button" onClick={handleAddToPending} disabled={loading}
-                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50">
+                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg disabled:opacity-50">
                         {loading ? "Saving…" : editingPendingId ? "Update Pending" : "Add to Pending"}
                       </button>
                     )}
@@ -1201,7 +1252,6 @@ export default function AnodizingPacking() {
         </>
       )}
 
-      {/* Delete Confirm */}
       {deleteTarget && (
         <DeleteConfirmModal
           record={deleteTarget}
@@ -1213,7 +1263,6 @@ export default function AnodizingPacking() {
 
       {showCloudSync && <CloudSync />}
 
-      {/* Success overlay */}
       {showSuccess && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 backdrop-blur-xl">
           <div className="rounded-3xl border border-white/10 bg-white/10 p-10 text-center shadow-2xl backdrop-blur-2xl">
