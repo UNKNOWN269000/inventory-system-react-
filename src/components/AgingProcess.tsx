@@ -156,18 +156,21 @@ export default function AgingProcess() {
     setShowBucketDropdown(false);
   };
 
+  // Filter by bucket_no only
   const filteredBuckets = availableBuckets.filter((b) => {
     if (selectedBuckets.find((s) => s.bucket_no === b.bucket_no)) return false;
-    return (
-      b.bucket_no.toLowerCase().includes(bucketSearch.toLowerCase()) ||
-      b.profile.toLowerCase().includes(bucketSearch.toLowerCase())
-    );
+    if (!bucketSearch.trim()) return true;
+    return b.bucket_no.toLowerCase().includes(bucketSearch.toLowerCase());
   });
 
   const addBucket = (bucket: AvailableBucket) => {
     setSelectedBuckets([
       ...selectedBuckets,
-      { id: bucket.id, bucket_no: bucket.bucket_no, weight: bucket.total_weight },
+      {
+        id: bucket.id,
+        bucket_no: bucket.bucket_no,
+        weight: bucket.total_weight,
+      },
     ]);
     setBucketSearch("");
     setShowBucketDropdown(false);
@@ -651,7 +654,7 @@ export default function AgingProcess() {
                       setShowBucketDropdown(true);
                     }}
                     onFocus={() => setShowBucketDropdown(true)}
-                    placeholder="Search buckets by number or profile..."
+                    placeholder="Search by bucket number..."
                     autoComplete="off"
                     className={glassInput}
                   />
