@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { SlideMenu } from "@/components/SlideMenu";
 import { MenuButton } from "@/components/MenuButton";
@@ -8,19 +8,6 @@ import { useAuth } from "@/context/AuthContext";
 import { menuStructure } from "@/lib/menu";
 import { supabase } from "@/lib/supabase";
 import { CloudSync } from "@/components/CloudSync";
-
-type AgingEntry = {
-  id?: number;
-  aging_date: string;
-  selected_buckets?: { bucket_no: string; weight: string }[];
-  bucket_count?: string;
-  total_weight: string;
-  batch_in_time: string;
-  batch_out_time: string;
-  session_id?: string;
-  submitted?: boolean;
-  created_at?: string;
-};
 
 type RecentAgingEntry = {
   id: number;
@@ -131,7 +118,6 @@ export default function AgingProcess() {
         console.error("Supabase error:", error);
         throw error;
       }
-      console.log("Loaded buckets:", data);
       setAvailableBuckets(data || []);
     } catch (err: any) {
       console.error("Error loading buckets:", err);
@@ -156,22 +142,27 @@ export default function AgingProcess() {
     setShowBucketDropdown(false);
   };
 
-  // Filter by bucket_no only (handles numbers and strings)
-  const filteredBuckets = availableBuckets.filter((b) => {
-    if (selectedBuckets.find((s) => s.bucket_no === b.bucket_no)) return false;
+  // LIVE SEARCH - useMemo ensures it recalculates instantly on every keystroke
+  const filteredBuckets = useMemo(() => {
+    const search = bucketSearch.trim().toLowerCase();
+    const selectedIds = new Set(selectedBuckets.map((s) => s.id));
 
-    const search = bucketSearch.trim();
-    if (!search) return true;
+    return availableBuckets.filter((b) => {
+      // Skip already selected
+      if (selectedIds.has(b.id)) return false;
 
-    const bucketNoStr = String(b.bucket_no ?? "").toLowerCase();
-    const searchStr = search.toLowerCase();
+      // Empty search shows all
+      if (!search) return true;
 
-    return bucketNoStr.includes(searchStr);
-  });
+      // Live filter by bucket_no only
+      const bucketNoStr = String(b.bucket_no ?? "").toLowerCase();
+      return bucketNoStr.includes(search);
+    });
+  }, [availableBuckets, selectedBuckets, bucketSearch]);
 
   const addBucket = (bucket: AvailableBucket) => {
-    setSelectedBuckets([
-      ...selectedBuckets,
+    setSelectedBuckets((prev) => [
+      ...prev,
       {
         id: bucket.id,
         bucket_no: bucket.bucket_no,
@@ -183,7 +174,9 @@ export default function AgingProcess() {
   };
 
   const removeBucket = (bucketNo: string) => {
-    setSelectedBuckets(selectedBuckets.filter((b) => b.bucket_no !== bucketNo));
+    setSelectedBuckets((prev) =>
+      prev.filter((b) => b.bucket_no !== bucketNo)
+    );
   };
 
   const totalWeight = selectedBuckets
@@ -219,7 +212,6 @@ export default function AgingProcess() {
       alert("No buckets in the batch.");
       return;
     }
-
     if (!batchInTime || !batchOutTime) {
       alert("Please enter both Batch In Time and Batch Out Time");
       return;
@@ -233,26 +225,17 @@ export default function AgingProcess() {
     setLoading(true);
     try {
       const bucketIds = currentBatch.buckets.map((b) => b.id);
-      const updateData: any = {
-        aging_date: currentBatch.date,
-      };
+      const updateData: any = { aging_date: currentBatch.date };
       if (batchInTime) updateData.in_time = batchInTime;
       if (batchOutTime) updateData.out_time = batchOutTime;
 
-      console.log("Updating buckets:", bucketIds, "with:", updateData);
-
-      const { data: updateResult, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from("bucket_income")
         .update(updateData)
         .in("id", bucketIds)
         .select();
 
-      if (updateError) {
-        console.error("Error updating bucket_income:", updateError);
-        throw updateError;
-      }
-
-      console.log("Updated bucket_income:", updateResult);
+      if (updateError) throw updateError;
 
       const newEntry: any = {
         aging_date: currentBatch.date,
@@ -269,20 +252,13 @@ export default function AgingProcess() {
       if (batchInTime) newEntry.batch_in_time = batchInTime;
       if (batchOutTime) newEntry.batch_out_time = batchOutTime;
 
-      console.log("Inserting into aging_process:", newEntry);
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("aging_process")
         .insert([newEntry])
         .select()
         .single();
 
-      if (error) {
-        console.error("Supabase error:", error);
-        throw error;
-      }
-
-      console.log("Saved to aging_process:", data);
+      if (error) throw error;
 
       await new Promise((resolve) => setTimeout(resolve, 2500));
       setShowCloudSync(false);
@@ -647,41 +623,58 @@ export default function AgingProcess() {
                   />
                 </div>
 
-                {/* Bucket Search */}
+                {/* Bucket Search - LIVE */}
                 <div className="relative" ref={dropdownRef}>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                     Select Buckets
                   </label>
-                  <input
-                    type="text"
-                    value={bucketSearch}
-                    onChange={(e) => {
-                      setBucketSearch(e.target.value);
-                      setShowBucketDropdown(true);
-                    }}
-                    onFocus={() => setShowBucketDropdown(true)}
-                    placeholder="Search by bucket number..."
-                    autoComplete="off"
-                    className={glassInput}
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={bucketSearch}
+                      onChange={(e) => {
+                        setBucketSearch(e.target.value);
+                        setShowBucketDropdown(true);
+                      }}
+                      onFocus={() => setShowBucketDropdown(true)}
+                      placeholder="Type bucket number to search..."
+                      autoComplete="off"
+                      className={`${glassInput} pr-8`}
+                    />
+                    {bucketSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBucketSearch("");
+                          setShowBucketDropdown(true);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-pink-400"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
 
-                  {/* DEBUG - remove after fixing */}
-                  <p className="mt-1 text-xs text-yellow-400">
-                    Search: "{bucketSearch}" | Showing:{" "}
-                    {filteredBuckets.length} / {availableBuckets.length}
+                  {/* Live result count */}
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {bucketSearch
+                      ? `${filteredBuckets.length} match(es) found`
+                      : `${filteredBuckets.length} bucket(s) available`}
                   </p>
 
-                  {/* Dropdown */}
+                  {/* Live Dropdown */}
                   {showBucketDropdown && (
-                    <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl">
+                    <div className="absolute left-0 right-0 z-20 mt-1 max-h-60 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl">
                       {filteredBuckets.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-zinc-500">
-                          No available buckets found
+                        <div className="px-3 py-3 text-center text-sm text-zinc-500">
+                          {bucketSearch
+                            ? `No bucket matches "${bucketSearch}"`
+                            : "No available buckets"}
                         </div>
                       ) : (
                         filteredBuckets.map((b) => (
                           <div
-                            key={b.bucket_no}
+                            key={b.id}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               addBucket(b);
