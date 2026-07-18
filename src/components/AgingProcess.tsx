@@ -156,11 +156,17 @@ export default function AgingProcess() {
     setShowBucketDropdown(false);
   };
 
-  // Filter by bucket_no only
+  // Filter by bucket_no only (handles numbers and strings)
   const filteredBuckets = availableBuckets.filter((b) => {
     if (selectedBuckets.find((s) => s.bucket_no === b.bucket_no)) return false;
-    if (!bucketSearch.trim()) return true;
-    return b.bucket_no.toLowerCase().includes(bucketSearch.toLowerCase());
+
+    const search = bucketSearch.trim();
+    if (!search) return true;
+
+    const bucketNoStr = String(b.bucket_no ?? "").toLowerCase();
+    const searchStr = search.toLowerCase();
+
+    return bucketNoStr.includes(searchStr);
   });
 
   const addBucket = (bucket: AvailableBucket) => {
@@ -658,6 +664,12 @@ export default function AgingProcess() {
                     autoComplete="off"
                     className={glassInput}
                   />
+
+                  {/* DEBUG - remove after fixing */}
+                  <p className="mt-1 text-xs text-yellow-400">
+                    Search: "{bucketSearch}" | Showing:{" "}
+                    {filteredBuckets.length} / {availableBuckets.length}
+                  </p>
 
                   {/* Dropdown */}
                   {showBucketDropdown && (
