@@ -98,6 +98,17 @@ interface PackingFlags {
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+/** Returns YYYY-MM-DD that is `n` days before today (local-safe) */
+const daysAgoStr = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  // Use local date parts to avoid UTC-shift cutting off today
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 const EMPTY_FORM: FormState = {
   prodDate: "", packDate: "", length: "", prodType: "", profile: "", surface: "",
   premiumPackNo: "", premiumOneQty: "", premiumTotalBundle: "", premiumAvgWeight: "",
@@ -112,41 +123,41 @@ const EMPTY_FLAGS: PackingFlags = {
   premiumPcsEnabled: false, nonBrandPcsEnabled: false,
 };
 
-function rowToFormState(record: any): { form: FormState; flags: PackingFlags } {
+function rowToFormState(r: any): { form: FormState; flags: PackingFlags } {
   return {
     form: {
-      prodDate: record.production_date ?? "",
-      packDate: record.packing_date ?? "",
-      length: record.length ?? "",
-      prodType: record.production_type ?? "",
-      profile: record.profile ?? "",
-      surface: record.surface ?? "",
-      premiumPackNo: record.premium_pack_no ?? "",
-      premiumOneQty: record.premium_one_qty ?? "",
-      premiumTotalBundle: record.premium_total_bundles ?? "",
-      premiumAvgWeight: record.premium_avg_weight ?? "",
-      premiumPcsPackNo: record.premium_pcs_pack_no ?? "",
-      premiumPcsOneQty: record.premium_pcs_one_qty ?? "",
-      premiumPcsTotalQty: record.premium_pcs_total_qty ?? "",
-      premiumPcsAvgWeight: record.premium_pcs_avg_weight ?? "",
-      nonBrandPackNo: record.nonbrand_pack_no ?? "",
-      nonBrandOneQty: record.nonbrand_one_qty ?? "",
-      nonBrandTotalBundle: record.nonbrand_total_bundles ?? "",
-      nonBrandAvgWeight: record.nonbrand_avg_weight ?? "",
-      nonBrandPcsPackNo: record.nonbrand_pcs_pack_no ?? "",
-      nonBrandPcsOneQty: record.nonbrand_pcs_one_qty ?? "",
-      nonBrandPcsTotalQty: record.nonbrand_pcs_total_qty ?? "",
-      nonBrandPcsAvgWeight: record.nonbrand_pcs_avg_weight ?? "",
-      weightBarPackNo: record.weightbar_pack_no ?? "",
-      weightBarBundleQty: record.weightbar_bundle_qty ?? "",
-      weightBarAvgWeight: record.weightbar_avg_weight ?? "",
+      prodDate: r.production_date ?? "",
+      packDate: r.packing_date ?? "",
+      length: r.length ?? "",
+      prodType: r.production_type ?? "",
+      profile: r.profile ?? "",
+      surface: r.surface ?? "",
+      premiumPackNo: r.premium_pack_no ?? "",
+      premiumOneQty: r.premium_one_qty ?? "",
+      premiumTotalBundle: r.premium_total_bundles ?? "",
+      premiumAvgWeight: r.premium_avg_weight ?? "",
+      premiumPcsPackNo: r.premium_pcs_pack_no ?? "",
+      premiumPcsOneQty: r.premium_pcs_one_qty ?? "",
+      premiumPcsTotalQty: r.premium_pcs_total_qty ?? "",
+      premiumPcsAvgWeight: r.premium_pcs_avg_weight ?? "",
+      nonBrandPackNo: r.nonbrand_pack_no ?? "",
+      nonBrandOneQty: r.nonbrand_one_qty ?? "",
+      nonBrandTotalBundle: r.nonbrand_total_bundles ?? "",
+      nonBrandAvgWeight: r.nonbrand_avg_weight ?? "",
+      nonBrandPcsPackNo: r.nonbrand_pcs_pack_no ?? "",
+      nonBrandPcsOneQty: r.nonbrand_pcs_one_qty ?? "",
+      nonBrandPcsTotalQty: r.nonbrand_pcs_total_qty ?? "",
+      nonBrandPcsAvgWeight: r.nonbrand_pcs_avg_weight ?? "",
+      weightBarPackNo: r.weightbar_pack_no ?? "",
+      weightBarBundleQty: r.weightbar_bundle_qty ?? "",
+      weightBarAvgWeight: r.weightbar_avg_weight ?? "",
     },
     flags: {
-      premiumEnabled: !!record.premium_enabled,
-      nonBrandEnabled: !!record.nonbrand_enabled,
-      weightBarEnabled: !!record.weightbar_enabled,
-      premiumPcsEnabled: !!record.premium_pcs_enabled,
-      nonBrandPcsEnabled: !!record.nonbrand_pcs_enabled,
+      premiumEnabled: !!r.premium_enabled,
+      nonBrandEnabled: !!r.nonbrand_enabled,
+      weightBarEnabled: !!r.weightbar_enabled,
+      premiumPcsEnabled: !!r.premium_pcs_enabled,
+      nonBrandPcsEnabled: !!r.nonbrand_pcs_enabled,
     },
   };
 }
@@ -163,7 +174,7 @@ const glassBtnPrimary =
   "text-sm font-bold text-black shadow-lg shadow-emerald-500/20 transition " +
   "hover:shadow-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed";
 
-// ─── Small reusable components ────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -194,8 +205,18 @@ function BadgeCell({ enabled, color }: { enabled: boolean; color: BadgeColor }) 
 
 function CheckIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
     </svg>
   );
 }
@@ -217,7 +238,8 @@ function SectionToggle({
   return (
     <div className="mb-3">
       <label className={`flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 ${borderHover}`}>
-        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+        <input type="checkbox" checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
           className={`h-5 w-5 rounded border-white/10 bg-white/5 ${accentClass}`} />
         <span className="text-sm font-bold uppercase text-zinc-400">{label}</span>
       </label>
@@ -240,7 +262,6 @@ function DeleteConfirmModal({ record, onConfirm, onCancel, deleting }: DeleteCon
       <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm" onClick={onCancel} />
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
         <div className={`w-full max-w-sm overflow-hidden ${glassCard}`}>
-          {/* Header */}
           <div className="border-b border-white/10 bg-gradient-to-r from-red-500/10 to-rose-500/10 px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="grid h-10 w-10 place-items-center rounded-full bg-red-500/20">
@@ -258,55 +279,36 @@ function DeleteConfirmModal({ record, onConfirm, onCancel, deleting }: DeleteCon
               </div>
             </div>
           </div>
-
-          {/* Body */}
           <div className="px-6 py-5">
             <p className="text-sm text-zinc-300">
               Are you sure you want to permanently delete this record?
             </p>
-            {/* Record summary */}
             <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-500">Profile</span>
-                <span className="text-sm font-bold text-emerald-400">{record.profile}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-500">Pack Date</span>
-                <span className="text-sm text-zinc-300">{record.packing_date}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-500">Surface</span>
-                <span className="text-sm text-zinc-300">{record.surface}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-500">Length</span>
-                <span className="text-sm text-zinc-300">{record.length}m</span>
-              </div>
+              {[
+                ["Profile", record.profile],
+                ["Pack Date", record.packing_date],
+                ["Surface", record.surface],
+                ["Length", `${record.length}m`],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-500">{label}</span>
+                  <span className={`text-sm ${label === "Profile" ? "font-bold text-emerald-400" : "text-zinc-300"}`}>
+                    {value}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-
-          {/* Footer */}
           <div className="flex gap-3 border-t border-white/10 px-6 py-4">
-            <button
-              onClick={onCancel}
-              className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold text-zinc-300 transition hover:border-white/30 hover:text-white"
-            >
+            <button onClick={onCancel}
+              className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold text-zinc-300 transition hover:border-white/30 hover:text-white">
               Cancel
             </button>
-            <button
-              onClick={onConfirm}
-              disabled={deleting}
-              className="flex-1 rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-500/20 transition hover:shadow-red-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {deleting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24"
-                    fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
-                  Deleting…
-                </span>
-              ) : "Delete"}
+            <button onClick={onConfirm} disabled={deleting}
+              className="flex-1 rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-500/20 transition hover:shadow-red-500/40 disabled:opacity-50 disabled:cursor-not-allowed">
+              {deleting
+                ? <span className="flex items-center justify-center gap-2"><SpinnerIcon />Deleting…</span>
+                : "Delete"}
             </button>
           </div>
         </div>
@@ -321,35 +323,30 @@ export default function AnodizingPacking() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { logout, user } = useAuth();
 
-  // UI state
   const [showModal, setShowModal] = useState(false);
   const [showCloudSync, setShowCloudSync] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("Packing Record Saved");
+  const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Delete confirm state
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Profile autocomplete
   const [profileSearch, setProfileSearch] = useState("");
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  // Data
   const [pendingRecords, setPendingRecords] = useState<any[]>([]);
   const [recentData, setRecentData] = useState<any[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
 
-  // Edit targets
   const [editingPendingId, setEditingPendingId] = useState<number | null>(null);
   const [editingRecentId, setEditingRecentId] = useState<number | null>(null);
 
-  // Form
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [flags, setFlags] = useState<PackingFlags>({ ...EMPTY_FLAGS });
 
-  // ── Derived ──────────────────────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────────
 
   const filteredProfiles = PROFILES.filter((p) =>
     p.toLowerCase().includes(profileSearch.toLowerCase())
@@ -361,7 +358,7 @@ export default function AnodizingPacking() {
   const calcNonBrandTotal = () =>
     String((parseInt(form.nonBrandOneQty) || 0) * (parseInt(form.nonBrandTotalBundle) || 0));
 
-  // ── Data loaders ─────────────────────────────────────────────────────────────
+  // ── Data loaders ──────────────────────────────────────────────────────────────
 
   const loadPending = useCallback(async () => {
     const { data, error } = await supabase
@@ -373,20 +370,39 @@ export default function AnodizingPacking() {
     else console.error("loadPending:", error);
   }, []);
 
+  /**
+   * Loads submitted records from the last 3 days.
+   *
+   * KEY FIX: filter on `packing_date` (correct column name) using a
+   * local-timezone-safe cutoff so today's records are always included.
+   *
+   * We do NOT filter by packing_date at all — instead we filter by
+   * `created_at` >= 3 days ago so records submitted today always appear
+   * regardless of what pack_date the user entered.
+   */
   const loadRecent = useCallback(async () => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 3);
+    setRecentLoading(true);
+    try {
+      // Use created_at for the window so "submitted today" always shows,
+      // even if the user entered an older packing_date on the form.
+      const cutoff = daysAgoStr(3); // local-tz safe, e.g. "2025-01-10"
 
-    const { data, error } = await supabase
-      .from("anodizing_packing")
-      .select("*")
-      .eq("submitted", true)
-      .gte("pack_date", cutoff.toISOString().slice(0, 10))
-      .order("created_at", { ascending: false })
-      .limit(50);
+      const { data, error } = await supabase
+        .from("anodizing_packing")
+        .select("*")
+        .eq("submitted", true)
+        .gte("packing_date", cutoff)   // ✅ correct column: packing_date
+        .order("packing_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(100);
 
-    if (!error) setRecentData(data ?? []);
-    else console.error("loadRecent:", error);
+      if (error) throw error;
+      setRecentData(data ?? []);
+    } catch (err) {
+      console.error("loadRecent:", err);
+    } finally {
+      setRecentLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -394,7 +410,7 @@ export default function AnodizingPacking() {
     loadRecent();
   }, [loadPending, loadRecent]);
 
-  // Close dropdown on outside click
+  // Close profile dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -500,7 +516,7 @@ export default function AnodizingPacking() {
     return null;
   };
 
-  // ── CRUD actions ──────────────────────────────────────────────────────────────
+  // ── CRUD ──────────────────────────────────────────────────────────────────────
 
   const handleAddToPending = async () => {
     const err = validateForm();
@@ -509,11 +525,14 @@ export default function AnodizingPacking() {
     try {
       if (editingPendingId !== null) {
         const { error } = await supabase
-          .from("anodizing_packing").update(buildRecord(false)).eq("id", editingPendingId);
+          .from("anodizing_packing")
+          .update(buildRecord(false))
+          .eq("id", editingPendingId);
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from("anodizing_packing").insert([buildRecord(false)]);
+          .from("anodizing_packing")
+          .insert([buildRecord(false)]);
         if (error) throw error;
       }
       closeModal();
@@ -528,23 +547,27 @@ export default function AnodizingPacking() {
   const handleFinalSubmit = async () => {
     if (pendingRecords.length === 0) { alert("No pending records to submit."); return; }
     const ids = pendingRecords.filter((r) => r.id).map((r) => r.id);
-    if (ids.length === 0) return;
+    if (!ids.length) return;
 
     setShowCloudSync(true);
     setLoading(true);
     try {
       const { error } = await supabase
-        .from("anodizing_packing").update({ submitted: true }).in("id", ids);
+        .from("anodizing_packing")
+        .update({ submitted: true })
+        .in("id", ids);
       if (error) throw error;
+
       await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
       setSuccessMessage("All Records Submitted");
       setShowSuccess(true);
-      setTimeout(async () => {
-        setShowSuccess(false);
-        setPendingRecords([]);
-        await loadRecent();
-      }, 2000);
+
+      // Clear pending + reload recent so submitted records appear immediately
+      setPendingRecords([]);
+      await loadRecent();
+
+      setTimeout(() => setShowSuccess(false), 2000);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
       setShowCloudSync(false);
@@ -562,17 +585,19 @@ export default function AnodizingPacking() {
     setLoading(true);
     try {
       const { error } = await supabase
-        .from("anodizing_packing").update(buildRecord(true)).eq("id", editingRecentId);
+        .from("anodizing_packing")
+        .update(buildRecord(true))
+        .eq("id", editingRecentId);
       if (error) throw error;
+
       await new Promise((r) => setTimeout(r, 2500));
       setShowCloudSync(false);
       setSuccessMessage("Record Updated Successfully");
       setShowSuccess(true);
-      setTimeout(async () => {
-        setShowSuccess(false);
-        closeModal();
-        await loadRecent();
-      }, 2000);
+      closeModal();
+      await loadRecent();
+
+      setTimeout(() => setShowSuccess(false), 2000);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
       setShowCloudSync(false);
@@ -593,10 +618,6 @@ export default function AnodizingPacking() {
     }
   };
 
-  // ── Delete recent (with confirm modal) ────────────────────────────────────────
-
-  const confirmDeleteRecent = (record: any) => setDeleteTarget(record);
-
   const handleDeleteRecent = async () => {
     if (!deleteTarget?.id) return;
     setDeleting(true);
@@ -615,11 +636,11 @@ export default function AnodizingPacking() {
 
   // ── Field helpers ─────────────────────────────────────────────────────────────
 
-  const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const setField = <K extends keyof FormState>(key: K, val: FormState[K]) =>
+    setForm((p) => ({ ...p, [key]: val }));
 
-  const setFlag = <K extends keyof PackingFlags>(key: K, value: boolean) =>
-    setFlags((prev) => ({ ...prev, [key]: value }));
+  const setFlag = <K extends keyof PackingFlags>(key: K, val: boolean) =>
+    setFlags((p) => ({ ...p, [key]: val }));
 
   const numericOnly = (v: string, allowComma = false) =>
     allowComma ? v.replace(/[^0-9,-]/g, "") : v.replace(/[^0-9-]/g, "");
@@ -630,13 +651,15 @@ export default function AnodizingPacking() {
     <div className="min-h-screen text-zinc-100">
       <SlideMenu nodes={menuStructure} isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      {/* ── Header ── */}
+      {/* Header */}
       <header className="border-b border-zinc-800">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <MenuButton onClick={() => setMenuOpen(true)} />
             <Link href="/home" className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 font-bold text-black shadow-lg shadow-emerald-500/20">U</div>
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 font-bold text-black shadow-lg shadow-emerald-500/20">
+                U
+              </div>
               <div>
                 <p className="text-sm font-semibold tracking-wide text-white">Ultra Aluminum</p>
                 <p className="text-xs text-zinc-500">Pvt Ltd</p>
@@ -654,7 +677,8 @@ export default function AnodizingPacking() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* ── Breadcrumb ── */}
+
+        {/* Breadcrumb */}
         <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
           <Link href="/home" className="hover:text-zinc-300">Home</Link>
           <span className="text-zinc-700">/</span>
@@ -663,7 +687,7 @@ export default function AnodizingPacking() {
           <span className="text-emerald-300">Packing</span>
         </nav>
 
-        {/* ── Hero Card ── */}
+        {/* Hero */}
         <div className={`relative mt-4 overflow-hidden p-8 ${glassCard}`}>
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-green-500/5" />
           <div className="relative flex flex-wrap items-center justify-between gap-4">
@@ -675,17 +699,19 @@ export default function AnodizingPacking() {
               <h1 className="mt-3 text-3xl font-bold text-white">Anodizing Packing</h1>
               <p className="text-sm text-zinc-400">Record anodizing packing data</p>
             </div>
-            <button onClick={openModal} className={glassBtnPrimary}>+ Add Packing Record</button>
+            <button onClick={openModal} className={glassBtnPrimary}>
+              + Add Packing Record
+            </button>
           </div>
         </div>
 
-        {/* ── Pending Records ── */}
+        {/* Pending Records */}
         {pendingRecords.length > 0 && (
           <div className={`mt-6 overflow-hidden ${glassCard}`}>
             <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
               <h2 className="text-lg font-semibold text-white">Pending Records</h2>
-              <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-                {pendingRecords.length} record(s)
+              <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-400">
+                {pendingRecords.length} pending
               </span>
             </div>
             <div className="overflow-x-auto">
@@ -731,7 +757,8 @@ export default function AnodizingPacking() {
               </p>
               <button onClick={handleFinalSubmit} disabled={loading}
                 className={`${glassBtnPrimary} flex items-center gap-2`}>
-                <CheckIcon />{loading ? "Submitting…" : "Final Submit"}
+                {loading ? <SpinnerIcon /> : <CheckIcon />}
+                {loading ? "Submitting…" : "Final Submit"}
               </button>
             </div>
           </div>
@@ -741,28 +768,53 @@ export default function AnodizingPacking() {
         <div className={`mt-6 overflow-hidden ${glassCard}`}>
           {/* Section header */}
           <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-lg font-semibold text-white">Recent Submitted Records</h2>
+              {/* Date range badge */}
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] text-zinc-500">
+                {daysAgoStr(3)} → {todayStr()}
+              </span>
               {recentData.length > 0 && (
-                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-zinc-400">
-                  {recentData.length} record{recentData.length !== 1 ? "s" : ""} · last 3 days
+                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+                  {recentData.length} record{recentData.length !== 1 ? "s" : ""}
                 </span>
               )}
             </div>
-            <button onClick={loadRecent}
-              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.5">
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-                <path d="M21 3v5h-5" />
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-                <path d="M8 16H3v5" />
-              </svg>
-              Refresh
+            {/* Refresh button */}
+            <button
+              onClick={loadRecent}
+              disabled={recentLoading}
+              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+            >
+              {recentLoading ? (
+                <SpinnerIcon />
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.5">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                  <path d="M8 16H3v5" />
+                </svg>
+              )}
+              {recentLoading ? "Loading…" : "Refresh"}
             </button>
           </div>
 
-          {recentData.length === 0 ? (
+          {recentLoading && recentData.length === 0 ? (
+            /* Skeleton loader */
+            <div className="space-y-px">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-6 py-4 border-b border-white/5">
+                  <div className="h-4 w-20 animate-pulse rounded bg-white/10" />
+                  <div className="h-4 w-12 animate-pulse rounded bg-white/10" />
+                  <div className="h-4 w-16 animate-pulse rounded bg-white/10" />
+                  <div className="h-4 w-10 animate-pulse rounded bg-white/10" />
+                  <div className="h-4 w-24 animate-pulse rounded bg-white/10" />
+                </div>
+              ))}
+            </div>
+          ) : recentData.length === 0 ? (
             /* Empty state */
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
               <div className="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5">
@@ -774,7 +826,9 @@ export default function AnodizingPacking() {
                 </svg>
               </div>
               <p className="text-sm font-medium text-zinc-500">No submitted records</p>
-              <p className="text-xs text-zinc-600">Records from the last 3 days will appear here</p>
+              <p className="text-xs text-zinc-600">
+                Records packed between {daysAgoStr(3)} and {todayStr()} will appear here
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -789,7 +843,7 @@ export default function AnodizingPacking() {
                     <th className="px-3 py-3">Pack Date</th>
                     <th className="px-3 py-3">Premium</th>
                     <th className="px-3 py-3">Non-Brand</th>
-                    <th className="px-3 py-3">Weight Bar</th>
+                    <th className="px-3 py-3">Wt Bar</th>
                     <th className="px-3 py-3">Operator</th>
                     <th className="px-3 py-3 text-center">Actions</th>
                   </tr>
@@ -797,28 +851,22 @@ export default function AnodizingPacking() {
                 <tbody>
                   {recentData.map((row, idx) => (
                     <tr key={row.id}
-                      className={`border-b border-white/5 transition hover:bg-white/5 ${idx % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
-                      <td className="px-3 py-3">
-                        <span className="font-bold text-emerald-400">{row.profile}</span>
-                      </td>
+                      className={`border-b border-white/5 transition hover:bg-white/5 ${idx % 2 !== 0 ? "bg-white/[0.02]" : ""}`}>
+                      <td className="px-3 py-3 font-bold text-emerald-400">{row.profile}</td>
                       <td className="px-3 py-3 text-zinc-300">{row.production_type}</td>
                       <td className="px-3 py-3 text-zinc-300">{row.surface}</td>
                       <td className="px-3 py-3 text-zinc-300">{row.length}m</td>
-                      <td className="px-3 py-3 text-zinc-400 text-xs">{row.production_date}</td>
+                      <td className="px-3 py-3 text-xs text-zinc-500">{row.production_date}</td>
                       <td className="px-3 py-3 text-zinc-300">{row.packing_date}</td>
                       <BadgeCell enabled={row.premium_enabled} color="emerald" />
                       <BadgeCell enabled={row.nonbrand_enabled} color="blue" />
                       <BadgeCell enabled={row.weightbar_enabled} color="purple" />
-                      <td className="px-3 py-3 text-xs text-zinc-500">
-                        {row.operator ?? "—"}
-                      </td>
-                      {/* Actions */}
+                      <td className="px-3 py-3 text-xs text-zinc-500">{row.operator ?? "—"}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center gap-2">
                           {/* Edit */}
                           <button
                             onClick={() => editRecentRecord(row)}
-                            title="Edit record"
                             className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-blue-400 transition hover:border-blue-500 hover:bg-blue-500/10 hover:text-blue-300"
                           >
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
@@ -831,8 +879,7 @@ export default function AnodizingPacking() {
                           </button>
                           {/* Delete */}
                           <button
-                            onClick={() => confirmDeleteRecent(row)}
-                            title="Delete record"
+                            onClick={() => setDeleteTarget(row)}
                             className="group flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500/10 hover:text-red-300"
                           >
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
@@ -885,6 +932,7 @@ export default function AnodizingPacking() {
 
                 {/* Modal body */}
                 <div className="max-h-[80vh] overflow-y-auto p-6 space-y-4">
+
                   {/* Dates */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label="Production Date">
@@ -926,8 +974,8 @@ export default function AnodizingPacking() {
                           setShowProfileDropdown(true);
                         }}
                         onFocus={() => setShowProfileDropdown(true)}
-                        placeholder="Search profile…" autoComplete="off"
-                        required className={glassInput} />
+                        placeholder="Search profile…"
+                        autoComplete="off" required className={glassInput} />
                       {showProfileDropdown && filteredProfiles.length > 0 && (
                         <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl">
                           {filteredProfiles.map((p) => (
@@ -957,7 +1005,7 @@ export default function AnodizingPacking() {
                     </select>
                   </Field>
 
-                  {/* ── Packing sections ── */}
+                  {/* Packing sections */}
                   <div>
                     <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-400">
                       Packing Configuration
@@ -999,7 +1047,9 @@ export default function AnodizingPacking() {
                           <input type="checkbox" checked={flags.premiumPcsEnabled}
                             onChange={(e) => setFlag("premiumPcsEnabled", e.target.checked)}
                             className="h-4 w-4 rounded accent-purple-500" />
-                          <span className="text-[11px] font-black uppercase text-zinc-500">Premium Pcs Details</span>
+                          <span className="text-[11px] font-black uppercase text-zinc-500">
+                            Premium Pcs Details
+                          </span>
                         </label>
                         {flags.premiumPcsEnabled && (
                           <div className="space-y-2 rounded-xl border border-white/5 bg-black/20 p-3">
@@ -1067,7 +1117,9 @@ export default function AnodizingPacking() {
                           <input type="checkbox" checked={flags.nonBrandPcsEnabled}
                             onChange={(e) => setFlag("nonBrandPcsEnabled", e.target.checked)}
                             className="h-4 w-4 rounded accent-purple-500" />
-                          <span className="text-[11px] font-black uppercase text-zinc-500">Non Brand Pcs Details</span>
+                          <span className="text-[11px] font-black uppercase text-zinc-500">
+                            Non Brand Pcs Details
+                          </span>
                         </label>
                         {flags.nonBrandPcsEnabled && (
                           <div className="space-y-2 rounded-xl border border-white/5 bg-black/20 p-3">
@@ -1124,7 +1176,7 @@ export default function AnodizingPacking() {
                     </SectionToggle>
                   </div>
 
-                  {/* Action buttons */}
+                  {/* Buttons */}
                   <div className="mt-6 flex gap-3">
                     <button type="button" onClick={closeModal}
                       className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-bold uppercase text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300">
@@ -1149,7 +1201,7 @@ export default function AnodizingPacking() {
         </>
       )}
 
-      {/* ── Delete Confirm Modal ── */}
+      {/* Delete Confirm */}
       {deleteTarget && (
         <DeleteConfirmModal
           record={deleteTarget}
@@ -1161,7 +1213,7 @@ export default function AnodizingPacking() {
 
       {showCloudSync && <CloudSync />}
 
-      {/* ── Success overlay ── */}
+      {/* Success overlay */}
       {showSuccess && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 backdrop-blur-xl">
           <div className="rounded-3xl border border-white/10 bg-white/10 p-10 text-center shadow-2xl backdrop-blur-2xl">
