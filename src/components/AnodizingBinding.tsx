@@ -121,7 +121,6 @@ export default function AnodizingBinding() {
     loadPendingFromDB();
   }, []);
 
-  // ✅ FIX 1: Proper error handling and logging
   const loadPendingFromDB = async () => {
     try {
       const { data, error } = await supabase
@@ -129,13 +128,12 @@ export default function AnodizingBinding() {
         .select("*")
         .eq("submitted", false)
         .order("created_at", { ascending: false });
-      
+
       if (error) {
         console.error("Supabase error loading pending:", error);
         alert(`Error loading pending records: ${error.message}`);
         return;
       }
-      console.log("Loaded pending records:", data);
       setPendingRecords(data || []);
     } catch (err: any) {
       console.error("Exception loading pending records:", err);
@@ -154,7 +152,7 @@ export default function AnodizingBinding() {
         .gte("extrusion_date", threeDaysAgo.toISOString().slice(0, 10))
         .order("created_at", { ascending: false })
         .limit(20);
-      
+
       if (error) {
         console.error("Supabase error loading recent:", error);
         return;
@@ -169,14 +167,14 @@ export default function AnodizingBinding() {
     p.toLowerCase().includes(profileSearch.toLowerCase())
   );
 
-  // ✅ FIX 2: Build record with proper boolean for submitted
+  // ✅ buildRecord matches schema exactly
   const buildRecord = () => ({
     extrusion_date: form.extrusionDate || null,
     billet_batch: form.billetBatch || null,
     die_no: form.dieNo || null,
     profile: form.profile || null,
     bucket_no: form.bucketNo || null,
-    legnth: form.length || null,
+    legnth: form.length || null,         // ✅ DB column is "legnth"
     surface: form.surface || null,
     full_rack_no: form.fullRackNo || null,
     one_full_rack_qty: form.oneFullRackQty || null,
@@ -204,13 +202,14 @@ export default function AnodizingBinding() {
     setShowModal(true);
   };
 
+  // ✅ recordToForm uses only "legnth" - no "length" fallback
   const recordToForm = (record: any): BindingForm => ({
     extrusionDate: record.extrusion_date || "",
     billetBatch: record.billet_batch || "",
     dieNo: record.die_no || "",
     profile: record.profile || "",
     bucketNo: record.bucket_no || "",
-    length: record.legnth || record.length || "",
+    length: record.legnth || "",         // ✅ only "legnth" exists in DB
     surface: record.surface || "",
     fullRackNo: record.full_rack_no || "",
     oneFullRackQty: record.one_full_rack_qty || "",
@@ -251,11 +250,9 @@ export default function AnodizingBinding() {
     setEditingRecentId(null);
   };
 
-  // ✅ FIX 3: Proper insert with error checking
   const handleAddToPending = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
-    
-    // Validation
+
     if (!form.profile) {
       alert("Please select a profile");
       return;
@@ -266,33 +263,27 @@ export default function AnodizingBinding() {
       const record = { ...buildRecord(), submitted: false };
 
       if (editingIndex !== null && pendingRecords[editingIndex]?.id) {
-        // Update existing pending record
         const { error } = await supabase
           .from("anodizing_binding")
           .update(record)
           .eq("id", pendingRecords[editingIndex].id);
-        
+
         if (error) throw error;
         setEditingIndex(null);
       } else {
-        // ✅ FIX: Insert new pending record with explicit return
         const { data, error } = await supabase
           .from("anodizing_binding")
           .insert([record])
           .select();
-        
+
         if (error) {
           console.error("Insert error:", error);
           throw error;
         }
         console.log("Inserted record:", data);
-        if (data && data[0]) {
-          setPendingRecords([data[0], ...pendingRecords]);
-        }
       }
-      
+
       closeModal();
-      // Reload from DB to sync state
       await loadPendingFromDB();
     } catch (err: any) {
       console.error("Add to pending error:", err);
@@ -302,7 +293,6 @@ export default function AnodizingBinding() {
     }
   };
 
-  // ✅ FIX 4: Final submit with proper error handling
   const handleFinalSubmit = async () => {
     if (pendingRecords.length === 0) {
       alert("No pending records to submit.");
@@ -323,9 +313,9 @@ export default function AnodizingBinding() {
         .from("anodizing_binding")
         .update({ submitted: true })
         .in("id", ids);
-      
+
       if (error) throw error;
-      
+
       await new Promise((resolve) => setTimeout(resolve, 1500));
       setShowCloudSync(false);
       setShowSuccess(true);
@@ -355,9 +345,9 @@ export default function AnodizingBinding() {
         .from("anodizing_binding")
         .update(record)
         .eq("id", editingRecentId);
-      
+
       if (error) throw error;
-      
+
       await new Promise((resolve) => setTimeout(resolve, 1500));
       setShowCloudSync(false);
       setShowSuccess(true);
@@ -377,7 +367,7 @@ export default function AnodizingBinding() {
 
   const handleDeletePending = async (index: number) => {
     if (!confirm("Are you sure you want to delete this record?")) return;
-    
+
     const record = pendingRecords[index];
     if (record?.id) {
       try {
@@ -385,7 +375,7 @@ export default function AnodizingBinding() {
           .from("anodizing_binding")
           .delete()
           .eq("id", record.id);
-        
+
         if (error) throw error;
       } catch (err: any) {
         console.error("Delete error:", err);
@@ -439,6 +429,7 @@ export default function AnodizingBinding() {
           </div>
         </div>
       </header>
+
       <div className="mx-auto max-w-7xl px-6 py-8">
         <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
           <Link href="/home/anodizing" className="hover:text-zinc-300">
@@ -447,6 +438,7 @@ export default function AnodizingBinding() {
           <span className="text-zinc-700">/</span>
           <span className="text-emerald-300">Binding</span>
         </nav>
+
         <div className={`mt-4 overflow-hidden p-8 ${glassCard}`}>
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-green-500/5" />
           <div className="relative flex flex-wrap items-center justify-between gap-4">
@@ -502,8 +494,9 @@ export default function AnodizingBinding() {
                       <td className="px-3 py-3 font-bold text-emerald-400">
                         {record.bucket_no}
                       </td>
+                      {/* ✅ Only "legnth" - no "length" fallback */}
                       <td className="px-3 py-3 text-zinc-300">
-                        {record.legnth || record.length || "—"}
+                        {record.legnth || "—"}
                       </td>
                       <td className="px-3 py-3 text-zinc-300">
                         {record.profile}
@@ -613,8 +606,9 @@ export default function AnodizingBinding() {
                       <td className="px-3 py-3 font-bold text-emerald-400">
                         {row.bucket_no}
                       </td>
+                      {/* ✅ Only "legnth" - no "length" fallback */}
                       <td className="px-3 py-3 text-zinc-300">
-                        {row.legnth || row.length || "—"}
+                        {row.legnth || "—"}
                       </td>
                       <td className="px-3 py-3 text-zinc-300">
                         {row.profile}
@@ -692,7 +686,10 @@ export default function AnodizingBinding() {
                   </div>
                 </div>
 
-                <form className="max-h-[80vh] overflow-y-auto p-6 space-y-4" onSubmit={handleAddToPending}>
+                <form
+                  className="max-h-[80vh] overflow-y-auto p-6 space-y-4"
+                  onSubmit={handleAddToPending}
+                >
                   <div>
                     <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                       Extrusion Date
@@ -700,7 +697,9 @@ export default function AnodizingBinding() {
                     <input
                       type="date"
                       value={form.extrusionDate}
-                      onChange={(e) => setForm({ ...form, extrusionDate: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, extrusionDate: e.target.value })
+                      }
                       className={glassInput}
                     />
                   </div>
@@ -713,7 +712,9 @@ export default function AnodizingBinding() {
                       <input
                         type="text"
                         value={form.billetBatch}
-                        onChange={(e) => setForm({ ...form, billetBatch: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, billetBatch: e.target.value })
+                        }
                         placeholder="000"
                         className={glassInput}
                       />
@@ -725,7 +726,9 @@ export default function AnodizingBinding() {
                       <input
                         type="text"
                         value={form.dieNo}
-                        onChange={(e) => setForm({ ...form, dieNo: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, dieNo: e.target.value })
+                        }
                         placeholder="00"
                         className={glassInput}
                       />
@@ -745,7 +748,9 @@ export default function AnodizingBinding() {
                         setForm({ ...form, profile: e.target.value });
                       }}
                       onFocus={() => setShowProfileDropdown(true)}
-                      onBlur={() => setTimeout(() => setShowProfileDropdown(false), 150)}
+                      onBlur={() =>
+                        setTimeout(() => setShowProfileDropdown(false), 150)
+                      }
                       placeholder="Search profile..."
                       className={glassInput}
                       required
@@ -755,7 +760,9 @@ export default function AnodizingBinding() {
                     {showProfileDropdown && (
                       <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl">
                         {filteredProfiles.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-zinc-500">No matches</div>
+                          <div className="px-3 py-2 text-sm text-zinc-500">
+                            No matches
+                          </div>
                         ) : (
                           filteredProfiles.map((p) => (
                             <div
@@ -784,7 +791,9 @@ export default function AnodizingBinding() {
                       <input
                         type="text"
                         value={form.bucketNo}
-                        onChange={(e) => setForm({ ...form, bucketNo: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, bucketNo: e.target.value })
+                        }
                         placeholder="Enter bucket ID"
                         className={glassInput}
                       />
@@ -796,7 +805,9 @@ export default function AnodizingBinding() {
                       <input
                         type="number"
                         value={form.length}
-                        onChange={(e) => setForm({ ...form, length: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, length: e.target.value })
+                        }
                         placeholder="e.g. 6000"
                         min="0"
                         step="any"
@@ -830,7 +841,9 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.fullRackNo}
-                          onChange={(e) => setForm({ ...form, fullRackNo: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, fullRackNo: e.target.value })
+                          }
                           placeholder="e.g. 101, 102"
                           className={glassInput}
                         />
@@ -842,7 +855,9 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.oneFullRackQty}
-                          onChange={(e) => setForm({ ...form, oneFullRackQty: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, oneFullRackQty: e.target.value })
+                          }
                           className={glassInput}
                         />
                       </div>
@@ -853,7 +868,9 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.pcsRackNo}
-                          onChange={(e) => setForm({ ...form, pcsRackNo: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, pcsRackNo: e.target.value })
+                          }
                           placeholder="e.g. 5, 10"
                           className={glassInput}
                         />
@@ -865,7 +882,9 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.pcsQty}
-                          onChange={(e) => setForm({ ...form, pcsQty: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, pcsQty: e.target.value })
+                          }
                           className={glassInput}
                         />
                       </div>
@@ -896,7 +915,9 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.fullRackNo2}
-                          onChange={(e) => setForm({ ...form, fullRackNo2: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, fullRackNo2: e.target.value })
+                          }
                           placeholder="e.g. 201, 202"
                           className={glassInput}
                         />
@@ -908,7 +929,12 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.oneFullRackQty2}
-                          onChange={(e) => setForm({ ...form, oneFullRackQty2: e.target.value })}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              oneFullRackQty2: e.target.value,
+                            })
+                          }
                           className={glassInput}
                         />
                       </div>
@@ -919,7 +945,9 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.pcsRackNo2}
-                          onChange={(e) => setForm({ ...form, pcsRackNo2: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, pcsRackNo2: e.target.value })
+                          }
                           placeholder="e.g. 7, 12"
                           className={glassInput}
                         />
@@ -931,7 +959,9 @@ export default function AnodizingBinding() {
                         <input
                           type="text"
                           value={form.pcsQty2}
-                          onChange={(e) => setForm({ ...form, pcsQty2: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, pcsQty2: e.target.value })
+                          }
                           className={glassInput}
                         />
                       </div>
@@ -946,7 +976,9 @@ export default function AnodizingBinding() {
                       <input
                         type="text"
                         value={form.totalBindingQty}
-                        onChange={(e) => setForm({ ...form, totalBindingQty: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, totalBindingQty: e.target.value })
+                        }
                         className={glassInput}
                       />
                     </div>
@@ -991,7 +1023,9 @@ export default function AnodizingBinding() {
                       <input
                         type="text"
                         value={form.averageTime}
-                        onChange={(e) => setForm({ ...form, averageTime: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, averageTime: e.target.value })
+                        }
                         className={glassInput}
                       />
                     </div>
@@ -1004,7 +1038,9 @@ export default function AnodizingBinding() {
                     <input
                       type="text"
                       value={form.rejectionQty}
-                      onChange={(e) => setForm({ ...form, rejectionQty: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, rejectionQty: e.target.value })
+                      }
                       className={glassInput}
                     />
                   </div>
@@ -1024,7 +1060,11 @@ export default function AnodizingBinding() {
                         disabled={loading}
                         className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
                       >
-                        {editingIndex !== null ? "Update Pending" : loading ? "Saving..." : "Add to Pending"}
+                        {editingIndex !== null
+                          ? "Update Pending"
+                          : loading
+                          ? "Saving..."
+                          : "Add to Pending"}
                       </button>
                     ) : (
                       <button
@@ -1049,12 +1089,24 @@ export default function AnodizingBinding() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 backdrop-blur-xl">
           <div className="rounded-3xl border border-white/10 bg-white/10 p-10 text-center shadow-2xl backdrop-blur-2xl">
             <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full bg-emerald-500/20">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-400">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="text-emerald-400"
+              >
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-white">Binding Record Saved</h2>
-            <p className="mt-2 text-sm text-zinc-400">Data synced to database successfully</p>
+            <h2 className="text-2xl font-bold text-white">
+              Binding Record Saved
+            </h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Data synced to database successfully
+            </p>
           </div>
         </div>
       )}
