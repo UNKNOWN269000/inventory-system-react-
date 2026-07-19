@@ -54,6 +54,7 @@ const PROFILES = [
 
 type BindingForm = {
   extrusionDate: string;
+  bindingDate: string;        // ✅ new field
   billetBatch: string;
   dieNo: string;
   profile: string;
@@ -92,6 +93,7 @@ export default function AnodizingBinding() {
 
   const emptyForm: BindingForm = {
     extrusionDate: "",
+    bindingDate: "",           // ✅ new field
     billetBatch: "",
     dieNo: "",
     profile: "",
@@ -167,14 +169,15 @@ export default function AnodizingBinding() {
     p.toLowerCase().includes(profileSearch.toLowerCase())
   );
 
-  // ✅ buildRecord matches schema exactly
+  // ✅ buildRecord matches new schema exactly
   const buildRecord = () => ({
     extrusion_date: form.extrusionDate || null,
+    binding_date: form.bindingDate || null,    // ✅ new field
     billet_batch: form.billetBatch || null,
     die_no: form.dieNo || null,
     profile: form.profile || null,
     bucket_no: form.bucketNo || null,
-    legnth: form.length || null,         // ✅ DB column is "legnth"
+    legnth: form.length || null,
     surface: form.surface || null,
     full_rack_no: form.fullRackNo || null,
     one_full_rack_qty: form.oneFullRackQty || null,
@@ -195,21 +198,22 @@ export default function AnodizingBinding() {
 
   const openModal = () => {
     const today = new Date().toISOString().slice(0, 10);
-    setForm({ ...emptyForm, extrusionDate: today });
+    setForm({ ...emptyForm, extrusionDate: today, bindingDate: today }); // ✅ default today
     setProfileSearch("");
     setEditingIndex(null);
     setEditingRecentId(null);
     setShowModal(true);
   };
 
-  // ✅ recordToForm uses only "legnth" - no "length" fallback
+  // ✅ recordToForm includes binding_date
   const recordToForm = (record: any): BindingForm => ({
     extrusionDate: record.extrusion_date || "",
+    bindingDate: record.binding_date || "",    // ✅ new field
     billetBatch: record.billet_batch || "",
     dieNo: record.die_no || "",
     profile: record.profile || "",
     bucketNo: record.bucket_no || "",
-    length: record.legnth || "",         // ✅ only "legnth" exists in DB
+    length: record.legnth || "",
     surface: record.surface || "",
     fullRackNo: record.full_rack_no || "",
     oneFullRackQty: record.one_full_rack_qty || "",
@@ -494,7 +498,6 @@ export default function AnodizingBinding() {
                       <td className="px-3 py-3 font-bold text-emerald-400">
                         {record.bucket_no}
                       </td>
-                      {/* ✅ Only "legnth" - no "length" fallback */}
                       <td className="px-3 py-3 text-zinc-300">
                         {record.legnth || "—"}
                       </td>
@@ -606,7 +609,6 @@ export default function AnodizingBinding() {
                       <td className="px-3 py-3 font-bold text-emerald-400">
                         {row.bucket_no}
                       </td>
-                      {/* ✅ Only "legnth" - no "length" fallback */}
                       <td className="px-3 py-3 text-zinc-300">
                         {row.legnth || "—"}
                       </td>
@@ -690,18 +692,34 @@ export default function AnodizingBinding() {
                   className="max-h-[80vh] overflow-y-auto p-6 space-y-4"
                   onSubmit={handleAddToPending}
                 >
-                  <div>
-                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                      Extrusion Date
-                    </label>
-                    <input
-                      type="date"
-                      value={form.extrusionDate}
-                      onChange={(e) =>
-                        setForm({ ...form, extrusionDate: e.target.value })
-                      }
-                      className={glassInput}
-                    />
+                  {/* ✅ Two date fields side by side */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Extrusion Date
+                      </label>
+                      <input
+                        type="date"
+                        value={form.extrusionDate}
+                        onChange={(e) =>
+                          setForm({ ...form, extrusionDate: e.target.value })
+                        }
+                        className={glassInput}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Binding Date
+                      </label>
+                      <input
+                        type="date"
+                        value={form.bindingDate}
+                        onChange={(e) =>
+                          setForm({ ...form, bindingDate: e.target.value })
+                        }
+                        className={glassInput}
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
