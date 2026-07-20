@@ -54,7 +54,7 @@ const PROFILES = [
 
 type BindingForm = {
   extrusionDate: string;
-  bindingDate: string;        // ✅ new field
+  bindingDate: string;
   billetBatch: string;
   dieNo: string;
   profile: string;
@@ -93,7 +93,7 @@ export default function AnodizingBinding() {
 
   const emptyForm: BindingForm = {
     extrusionDate: "",
-    bindingDate: "",           // ✅ new field
+    bindingDate: "",
     billetBatch: "",
     dieNo: "",
     profile: "",
@@ -169,10 +169,9 @@ export default function AnodizingBinding() {
     p.toLowerCase().includes(profileSearch.toLowerCase())
   );
 
-  // ✅ buildRecord matches new schema exactly
   const buildRecord = () => ({
     extrusion_date: form.extrusionDate || null,
-    binding_date: form.bindingDate || null,    // ✅ new field
+    binding_date: form.bindingDate || null,
     billet_batch: form.billetBatch || null,
     die_no: form.dieNo || null,
     profile: form.profile || null,
@@ -198,17 +197,16 @@ export default function AnodizingBinding() {
 
   const openModal = () => {
     const today = new Date().toISOString().slice(0, 10);
-    setForm({ ...emptyForm, extrusionDate: today, bindingDate: today }); // ✅ default today
+    setForm({ ...emptyForm, extrusionDate: today, bindingDate: today });
     setProfileSearch("");
     setEditingIndex(null);
     setEditingRecentId(null);
     setShowModal(true);
   };
 
-  // ✅ recordToForm includes binding_date
   const recordToForm = (record: any): BindingForm => ({
     extrusionDate: record.extrusion_date || "",
-    bindingDate: record.binding_date || "",    // ✅ new field
+    bindingDate: record.binding_date || "",
     billetBatch: record.billet_batch || "",
     dieNo: record.die_no || "",
     profile: record.profile || "",
@@ -260,6 +258,11 @@ export default function AnodizingBinding() {
     if (!form.profile) {
       alert("Please select a profile");
       return;
+    }
+
+    // ✅ If editing a recent record, route to updateRecent handler
+    if (editingRecentId !== null) {
+      return handleUpdateRecent();
     }
 
     setLoading(true);
@@ -690,9 +693,15 @@ export default function AnodizingBinding() {
 
                 <form
                   className="max-h-[80vh] overflow-y-auto p-6 space-y-4"
-                  onSubmit={handleAddToPending}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editingRecentId !== null) {
+                      handleUpdateRecent();
+                    } else {
+                      handleAddToPending();
+                    }
+                  }}
                 >
-                  {/* ✅ Two date fields side by side */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
@@ -1073,8 +1082,7 @@ export default function AnodizingBinding() {
                     </button>
                     {editingRecentId === null ? (
                       <button
-                        type="button"
-                        onClick={handleAddToPending}
+                        type="submit"
                         disabled={loading}
                         className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
                       >
@@ -1086,8 +1094,7 @@ export default function AnodizingBinding() {
                       </button>
                     ) : (
                       <button
-                        type="button"
-                        onClick={handleUpdateRecent}
+                        type="submit"
                         disabled={loading}
                         className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
                       >
