@@ -252,7 +252,8 @@ export default function AnodizingBinding() {
     setEditingRecentId(null);
   };
 
-  const handleAddToPending = async (e?: React.FormEvent | React.MouseEvent) => {
+  // ✅ UNIFIED SUBMIT HANDLER - single source of truth
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
 
     if (!form.profile) {
@@ -260,16 +261,23 @@ export default function AnodizingBinding() {
       return;
     }
 
-    // ✅ If editing a recent record, route to updateRecent handler
+    // Route 1: Editing a recent (submitted) record → UPDATE in DB directly
     if (editingRecentId !== null) {
-      return handleUpdateRecent();
+      return updateRecentRecord();
     }
 
+    // Route 2: Adding new OR editing pending record → save to DB as pending
+    return saveToPending();
+  };
+
+  // ✅ Save to pending table (insert or update pending row)
+  const saveToPending = async () => {
     setLoading(true);
     try {
       const record = { ...buildRecord(), submitted: false };
 
       if (editingIndex !== null && pendingRecords[editingIndex]?.id) {
+        // Update existing pending record
         const { error } = await supabase
           .from("anodizing_binding")
           .update(record)
@@ -278,6 +286,7 @@ export default function AnodizingBinding() {
         if (error) throw error;
         setEditingIndex(null);
       } else {
+        // Insert new pending record
         const { data, error } = await supabase
           .from("anodizing_binding")
           .insert([record])
@@ -293,8 +302,89 @@ export default function AnodizingBinding() {
       closeModal();
       await loadPendingFromDB();
     } catch (err: any) {
-      console.error("Add to pending error:", err);
+      console.error("Save to pending error:", err);
       alert(`Error saving record: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Update recent (submitted) record directly in DB
+  const updateRecentRecord = async () => {
+    if (editingRecentId === null) return;
+    setLoading(true);
+    setShowCloudSync(true);
+    try {
+      const record = { ...buildRecord(), submitted: true };
+      const { error } = await supabase
+        .from("anodizing_binding")
+        .update(record)
+        .eq("id", editingRecentId);
+
+      if (error) throw error;
+
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setShowCloudSync(false);
+      setShowSuccess(true);
+      setTimeout(async () => {
+        setShowSuccess(false);
+        setEditingRecentId(null);
+        await loadRecentData();
+      }, 2000);
+    } catch (err: any) {
+      console.error("Update recent error:", err);
+      alert(`Error updating: ${err.message}`);
+      setShowCloudSync(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ NEW: Delete pending record
+  const handleDeletePending = async (index: number) => {
+    if (!confirm("Are you sure you want to delete this pending record?")) return;
+
+    const record = pendingRecords[index];
+    if (record?.id) {
+      try {
+        const { error } = await supabase
+          .from("anodizing_binding")
+          .delete()
+          .eq("id", record.id);
+
+        if (error) throw error;
+      } catch (err: any) {
+        console.error("Delete pending error:", err);
+        alert(`Error: ${err.message}`);
+        return;
+      }
+    }
+    setPendingRecords(pendingRecords.filter((_, i) => i !== index));
+  };
+
+  // ✅ NEW: Delete recent (submitted) record from DB
+  const handleDeleteRecent = async (record: any) => {
+    if (!confirm(`Are you sure you want to delete record ${record.bucket_no}? This cannot be undone.`)) return;
+
+    if (!record?.id) {
+      alert("Cannot delete: record has no ID");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("anodizing_binding")
+        .delete()
+        .eq("id", record.id);
+
+      if (error) throw error;
+
+      // Refresh the recent data list
+      await loadRecentData();
+    } catch (err: any) {
+      console.error("Delete recent error:", err);
+      alert(`Error deleting record: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -340,57 +430,6 @@ export default function AnodizingBinding() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleUpdateRecent = async () => {
-    if (editingRecentId === null) return;
-    setShowCloudSync(true);
-    setLoading(true);
-    try {
-      const record = { ...buildRecord(), submitted: true };
-      const { error } = await supabase
-        .from("anodizing_binding")
-        .update(record)
-        .eq("id", editingRecentId);
-
-      if (error) throw error;
-
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setShowCloudSync(false);
-      setShowSuccess(true);
-      setTimeout(() => {
-        setShowSuccess(false);
-        setEditingRecentId(null);
-        loadRecentData();
-      }, 2000);
-    } catch (err: any) {
-      console.error("Update recent error:", err);
-      alert(`Error updating: ${err.message}`);
-      setShowCloudSync(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeletePending = async (index: number) => {
-    if (!confirm("Are you sure you want to delete this record?")) return;
-
-    const record = pendingRecords[index];
-    if (record?.id) {
-      try {
-        const { error } = await supabase
-          .from("anodizing_binding")
-          .delete()
-          .eq("id", record.id);
-
-        if (error) throw error;
-      } catch (err: any) {
-        console.error("Delete error:", err);
-        alert(`Error: ${err.message}`);
-        return;
-      }
-    }
-    setPendingRecords(pendingRecords.filter((_, i) => i !== index));
   };
 
   const glassCard =
@@ -639,12 +678,20 @@ export default function AnodizingBinding() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <button
-                          onClick={() => editRecentRecord(row)}
-                          className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300"
-                        >
-                          Edit
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => editRecentRecord(row)}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRecent(row)}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -676,7 +723,7 @@ export default function AnodizingBinding() {
                       className="text-lg font-bold uppercase tracking-widest text-emerald-400"
                     >
                       {editingRecentId
-                        ? "Edit Binding Record"
+                        ? "Edit Submitted Record"
                         : "Add Binding Record"}
                     </h3>
                     <button
@@ -691,16 +738,10 @@ export default function AnodizingBinding() {
                   </div>
                 </div>
 
+                {/* ✅ SINGLE onSubmit handler using unified handleSubmit */}
                 <form
                   className="max-h-[80vh] overflow-y-auto p-6 space-y-4"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (editingRecentId !== null) {
-                      handleUpdateRecent();
-                    } else {
-                      handleAddToPending();
-                    }
-                  }}
+                  onSubmit={handleSubmit}
                 >
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
@@ -1080,27 +1121,19 @@ export default function AnodizingBinding() {
                     >
                       Cancel
                     </button>
-                    {editingRecentId === null ? (
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
-                      >
-                        {editingIndex !== null
-                          ? "Update Pending"
-                          : loading
-                          ? "Saving..."
-                          : "Add to Pending"}
-                      </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
-                      >
-                        {loading ? "Updating..." : "Update Record"}
-                      </button>
-                    )}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-3.5 text-sm font-black uppercase text-black shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/40 disabled:opacity-50"
+                    >
+                      {loading
+                        ? "Saving..."
+                        : editingRecentId !== null
+                        ? "Update Record"
+                        : editingIndex !== null
+                        ? "Update Pending"
+                        : "Add to Pending"}
+                    </button>
                   </div>
                 </form>
               </div>
