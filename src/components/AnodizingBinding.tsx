@@ -83,6 +83,8 @@ export default function AnodizingBinding() {
   const [showModal, setShowModal] = useState(false);
   const [showCloudSync, setShowCloudSync] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("Binding Record Saved");
+  const [successSubMessage, setSuccessSubMessage] = useState("Data synced to database successfully");
   const [loading, setLoading] = useState(false);
   const [profileSearch, setProfileSearch] = useState("");
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -252,7 +254,7 @@ export default function AnodizingBinding() {
     setEditingRecentId(null);
   };
 
-  // ✅ UNIFIED SUBMIT HANDLER - single source of truth
+  // ✅ UNIFIED SUBMIT HANDLER
   const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
 
@@ -270,7 +272,7 @@ export default function AnodizingBinding() {
     return saveToPending();
   };
 
-  // ✅ Save to pending table (insert or update pending row)
+  // ✅ Save to pending table
   const saveToPending = async () => {
     setLoading(true);
     try {
@@ -309,11 +311,15 @@ export default function AnodizingBinding() {
     }
   };
 
-  // ✅ Update recent (submitted) record directly in DB
+  // ✅ Update recent (submitted) record directly in DB - FIXED: closes modal first
   const updateRecentRecord = async () => {
     if (editingRecentId === null) return;
-    setLoading(true);
+
+    // ✅ CLOSE MODAL FIRST before showing cloud sync animation
+    setShowModal(false);
     setShowCloudSync(true);
+    setLoading(true);
+
     try {
       const record = { ...buildRecord(), submitted: true };
       const { error } = await supabase
@@ -325,22 +331,28 @@ export default function AnodizingBinding() {
 
       await new Promise((resolve) => setTimeout(resolve, 1500));
       setShowCloudSync(false);
+      setSuccessMessage("Record Updated Successfully");
+      setSuccessSubMessage("The record has been updated in the database");
       setShowSuccess(true);
+
       setTimeout(async () => {
         setShowSuccess(false);
         setEditingRecentId(null);
+        setEditingIndex(null);
         await loadRecentData();
       }, 2000);
     } catch (err: any) {
       console.error("Update recent error:", err);
       alert(`Error updating: ${err.message}`);
       setShowCloudSync(false);
+      // ✅ Reopen modal if update fails so user doesn't lose data
+      setShowModal(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ NEW: Delete pending record
+  // ✅ Delete pending record
   const handleDeletePending = async (index: number) => {
     if (!confirm("Are you sure you want to delete this pending record?")) return;
 
@@ -362,7 +374,7 @@ export default function AnodizingBinding() {
     setPendingRecords(pendingRecords.filter((_, i) => i !== index));
   };
 
-  // ✅ NEW: Delete recent (submitted) record from DB
+  // ✅ Delete recent (submitted) record from DB
   const handleDeleteRecent = async (record: any) => {
     if (!confirm(`Are you sure you want to delete record ${record.bucket_no}? This cannot be undone.`)) return;
 
@@ -415,6 +427,8 @@ export default function AnodizingBinding() {
 
       await new Promise((resolve) => setTimeout(resolve, 1500));
       setShowCloudSync(false);
+      setSuccessMessage("Records Submitted Successfully");
+      setSuccessSubMessage(`${recordsWithId.length} record(s) synced to database`);
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -722,8 +736,10 @@ export default function AnodizingBinding() {
                       id="binding-modal-title"
                       className="text-lg font-bold uppercase tracking-widest text-emerald-400"
                     >
-                      {editingRecentId
+                      {editingRecentId !== null
                         ? "Edit Submitted Record"
+                        : editingIndex !== null
+                        ? "Edit Pending Record"
                         : "Add Binding Record"}
                     </h3>
                     <button
@@ -738,7 +754,6 @@ export default function AnodizingBinding() {
                   </div>
                 </div>
 
-                {/* ✅ SINGLE onSubmit handler using unified handleSubmit */}
                 <form
                   className="max-h-[80vh] overflow-y-auto p-6 space-y-4"
                   onSubmit={handleSubmit}
@@ -1160,10 +1175,10 @@ export default function AnodizingBinding() {
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-white">
-              Binding Record Saved
+              {successMessage}
             </h2>
             <p className="mt-2 text-sm text-zinc-400">
-              Data synced to database successfully
+              {successSubMessage}
             </p>
           </div>
         </div>
