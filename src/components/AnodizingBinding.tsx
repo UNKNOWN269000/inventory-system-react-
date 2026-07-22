@@ -77,6 +77,8 @@ type BindingForm = {
   rejectionQty: string;
 };
 
+type DateFilter = "all" | "today" | "week" | "month";
+
 export default function AnodizingBinding() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { logout, user } = useAuth();
@@ -86,12 +88,14 @@ export default function AnodizingBinding() {
   const [successMessage, setSuccessMessage] = useState("Binding Record Saved");
   const [successSubMessage, setSuccessSubMessage] = useState("Data synced to database successfully");
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [profileSearch, setProfileSearch] = useState("");
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [pendingRecords, setPendingRecords] = useState<any[]>([]);
   const [recentData, setRecentData] = useState<any[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingRecentId, setEditingRecentId] = useState<number | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
 
   const emptyForm: BindingForm = {
     extrusionDate: "",
@@ -125,6 +129,11 @@ export default function AnodizingBinding() {
     loadPendingFromDB();
   }, []);
 
+  // ✅ Reload recent data when date filter changes
+  useEffect(() => {
+    loadRecentData();
+  }, [dateFilter]);
+
   const loadPendingFromDB = async () => {
     try {
       const { data, error } = await supabase
@@ -135,35 +144,58 @@ export default function AnodizingBinding() {
 
       if (error) {
         console.error("Supabase error loading pending:", error);
-        alert(`Error loading pending records: ${error.message}`);
         return;
       }
       setPendingRecords(data || []);
     } catch (err: any) {
       console.error("Exception loading pending records:", err);
-      alert(`Error: ${err.message}`);
     }
   };
 
+  // ✅ FIX: Improved loadRecentData with proper date filtering and visual feedback
   const loadRecentData = async () => {
+    setRefreshing(true);
     try {
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-      const { data, error } = await supabase
+      let query = supabase
         .from("anodizing_binding")
         .select("*")
         .eq("submitted", true)
-        .gte("extrusion_date", threeDaysAgo.toISOString().slice(0, 10))
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .order("created_at", { ascending: false });
+
+      // Apply date filter if not "all"
+      if (dateFilter !== "all") {
+        const now = new Date();
+        const filterDate = new Date();
+
+        if (dateFilter === "today") {
+          filterDate.setHours(0, 0, 0, 0);
+        } else if (dateFilter === "week") {
+          filterDate.setDate(now.getDate() - 7);
+        } else if (dateFilter === "month") {
+          filterDate.setDate(now.getDate() - 30);
+        }
+
+        const year = filterDate.getFullYear();
+        const month = String(filterDate.getMonth() + 1).padStart(2, "0");
+        const day = String(filterDate.getDate()).padStart(2, "0");
+        const formattedDate = `${year}-${month}-${day}`;
+
+        query = query.gte("extrusion_date", formattedDate);
+      }
+
+      const { data, error } = await query.limit(100);
 
       if (error) {
         console.error("Supabase error loading recent:", error);
+        alert(`Error loading recent data: ${error.message}`);
         return;
       }
       setRecentData(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error loading recent data:", err);
+      alert(`Error: ${err.message}`);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -263,23 +295,19 @@ export default function AnodizingBinding() {
       return;
     }
 
-    // Route 1: Editing a recent (submitted) record → UPDATE in DB directly
     if (editingRecentId !== null) {
       return updateRecentRecord();
     }
 
-    // Route 2: Adding new OR editing pending record → save to DB as pending
     return saveToPending();
   };
 
-  // ✅ Save to pending table
   const saveToPending = async () => {
     setLoading(true);
     try {
       const record = { ...buildRecord(), submitted: false };
 
       if (editingIndex !== null && pendingRecords[editingIndex]?.id) {
-        // Update existing pending record
         const { error } = await supabase
           .from("anodizing_binding")
           .update(record)
@@ -288,7 +316,6 @@ export default function AnodizingBinding() {
         if (error) throw error;
         setEditingIndex(null);
       } else {
-        // Insert new pending record
         const { data, error } = await supabase
           .from("anodizing_binding")
           .insert([record])
@@ -311,11 +338,10 @@ export default function AnodizingBinding() {
     }
   };
 
-  // ✅ Update recent (submitted) record directly in DB - FIXED: closes modal first
+  // ✅ FIX: Update recent record closes modal first before showing cloud sync
   const updateRecentRecord = async () => {
     if (editingRecentId === null) return;
 
-    // ✅ CLOSE MODAL FIRST before showing cloud sync animation
     setShowModal(false);
     setShowCloudSync(true);
     setLoading(true);
@@ -345,14 +371,12 @@ export default function AnodizingBinding() {
       console.error("Update recent error:", err);
       alert(`Error updating: ${err.message}`);
       setShowCloudSync(false);
-      // ✅ Reopen modal if update fails so user doesn't lose data
       setShowModal(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Delete pending record
   const handleDeletePending = async (index: number) => {
     if (!confirm("Are you sure you want to delete this pending record?")) return;
 
@@ -374,7 +398,7 @@ export default function AnodizingBinding() {
     setPendingRecords(pendingRecords.filter((_, i) => i !== index));
   };
 
-  // ✅ Delete recent (submitted) record from DB
+  // ✅ NEW: Delete recent record
   const handleDeleteRecent = async (record: any) => {
     if (!confirm(`Are you sure you want to delete record ${record.bucket_no}? This cannot be undone.`)) return;
 
@@ -392,7 +416,6 @@ export default function AnodizingBinding() {
 
       if (error) throw error;
 
-      // Refresh the recent data list
       await loadRecentData();
     } catch (err: any) {
       console.error("Delete recent error:", err);
@@ -624,21 +647,46 @@ export default function AnodizingBinding() {
           </div>
         )}
 
+        {/* ✅ FIXED: Recent Submitted Records with date filter and working refresh button */}
         <div className={`mt-6 overflow-hidden ${glassCard}`}>
           <div className="border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-green-500/10 px-6 py-3 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white">
               Recent Submitted Records
+              {recentData.length > 0 && (
+                <span className="ml-2 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                  {recentData.length}
+                </span>
+              )}
             </h2>
-            <button
-              onClick={loadRecentData}
-              className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300"
-            >
-              ↻ Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              {/* ✅ Date filter dropdown */}
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+                className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 focus:border-emerald-500 focus:outline-none"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 Days</option>
+                <option value="month">Last 30 Days</option>
+              </select>
+              {/* ✅ FIXED: Refresh button with visual feedback */}
+              <button
+                onClick={loadRecentData}
+                disabled={refreshing}
+                className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition hover:border-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className={`inline-block ${refreshing ? "animate-spin" : ""}`}>
+                  ↻
+                </span>
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
           </div>
           {recentData.length === 0 ? (
             <div className="p-8 text-center text-zinc-500">
-              No submitted records found in the last 3 days.
+              No submitted records found
+              {dateFilter !== "all" && ` for the selected period`}.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -701,7 +749,8 @@ export default function AnodizingBinding() {
                           </button>
                           <button
                             onClick={() => handleDeleteRecent(row)}
-                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300"
+                            disabled={loading}
+                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300 disabled:opacity-50"
                           >
                             Delete
                           </button>
