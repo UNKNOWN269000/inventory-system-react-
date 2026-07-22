@@ -147,11 +147,13 @@ export default function AnodizingBinding() {
 
   const loadRecentData = async () => {
     try {
-      // FIXED: Removed the three-day .gte filter on 'extrusion_date' to show all back-dated entries correctly.
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
       const { data, error } = await supabase
         .from("anodizing_binding")
         .select("*")
         .eq("submitted", true)
+        .gte("extrusion_date", threeDaysAgo.toISOString().slice(0, 10))
         .order("created_at", { ascending: false })
         .limit(20);
 
@@ -252,6 +254,7 @@ export default function AnodizingBinding() {
     setEditingRecentId(null);
   };
 
+  // ✅ UNIFIED SUBMIT HANDLER
   const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
 
@@ -260,19 +263,23 @@ export default function AnodizingBinding() {
       return;
     }
 
+    // Route 1: Editing a recent (submitted) record → UPDATE in DB directly
     if (editingRecentId !== null) {
       return updateRecentRecord();
     }
 
+    // Route 2: Adding new OR editing pending record → save to DB as pending
     return saveToPending();
   };
 
+  // ✅ Save to pending table
   const saveToPending = async () => {
     setLoading(true);
     try {
       const record = { ...buildRecord(), submitted: false };
 
       if (editingIndex !== null && pendingRecords[editingIndex]?.id) {
+        // Update existing pending record
         const { error } = await supabase
           .from("anodizing_binding")
           .update(record)
@@ -281,6 +288,7 @@ export default function AnodizingBinding() {
         if (error) throw error;
         setEditingIndex(null);
       } else {
+        // Insert new pending record
         const { data, error } = await supabase
           .from("anodizing_binding")
           .insert([record])
@@ -303,9 +311,11 @@ export default function AnodizingBinding() {
     }
   };
 
+  // ✅ Update recent (submitted) record directly in DB - FIXED: closes modal first
   const updateRecentRecord = async () => {
     if (editingRecentId === null) return;
 
+    // ✅ CLOSE MODAL FIRST before showing cloud sync animation
     setShowModal(false);
     setShowCloudSync(true);
     setLoading(true);
@@ -335,12 +345,14 @@ export default function AnodizingBinding() {
       console.error("Update recent error:", err);
       alert(`Error updating: ${err.message}`);
       setShowCloudSync(false);
+      // ✅ Reopen modal if update fails so user doesn't lose data
       setShowModal(true);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ Delete pending record
   const handleDeletePending = async (index: number) => {
     if (!confirm("Are you sure you want to delete this pending record?")) return;
 
@@ -362,6 +374,7 @@ export default function AnodizingBinding() {
     setPendingRecords(pendingRecords.filter((_, i) => i !== index));
   };
 
+  // ✅ Delete recent (submitted) record from DB
   const handleDeleteRecent = async (record: any) => {
     if (!confirm(`Are you sure you want to delete record ${record.bucket_no}? This cannot be undone.`)) return;
 
@@ -379,6 +392,7 @@ export default function AnodizingBinding() {
 
       if (error) throw error;
 
+      // Refresh the recent data list
       await loadRecentData();
     } catch (err: any) {
       console.error("Delete recent error:", err);
@@ -1169,9 +1183,6 @@ export default function AnodizingBinding() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
     </div>
   );
 }
