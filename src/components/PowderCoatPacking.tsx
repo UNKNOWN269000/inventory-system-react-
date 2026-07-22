@@ -198,8 +198,41 @@ export default function PowderCoatPacking() {
 
   const openModal = () => {
     const today = new Date().toISOString().slice(0, 10);
-    setForm({ ...form, productionDate: today, packingDate: today });
+    setForm({
+      productionDate: today,
+      packingDate: today,
+      bucketNo: "",
+      length: "",
+      productionType: "",
+      profile: "",
+      colour: "",
+      rePowderQty: "",
+      premiumPackNo: "",
+      premiumOneQty: "",
+      premiumTotalBundles: "",
+      premiumAvgWeight: "",
+      premiumPcsPackNo: "",
+      premiumPcsOneQty: "",
+      premiumPcsTotalQty: "",
+      premiumPcsAvgWeight: "",
+      nonBrandPackNo: "",
+      nonBrandOneQty: "",
+      nonBrandTotalBundles: "",
+      nonBrandAvgWeight: "",
+      nonBrandPcsPackNo: "",
+      nonBrandPcsOneQty: "",
+      nonBrandPcsTotalQty: "",
+      nonBrandPcsAvgWeight: "",
+      weightBarPackNo: "",
+      weightBarOneQty: "",
+      weightBarAvgWeight: "",
+    });
     setProfileSearch("");
+    setPremiumEnabled(false);
+    setNonBrandEnabled(false);
+    setWeightBarEnabled(false);
+    setPremiumPcsEnabled(false);
+    setNonBrandPcsEnabled(false);
     setEditingIndex(null);
     setEditingRecentId(null);
     setShowModal(true);
@@ -292,6 +325,7 @@ export default function PowderCoatPacking() {
     setShowModal(false);
     setEditingIndex(null);
     setEditingRecentId(null);
+    setProfileSearch("");
     setPremiumEnabled(false);
     setNonBrandEnabled(false);
     setWeightBarEnabled(false);
@@ -424,6 +458,26 @@ export default function PowderCoatPacking() {
       }
     }
     setPendingRecords(pendingRecords.filter((_, i) => i !== index));
+  };
+
+  const handleDeleteRecent = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this record?")) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("powder_coat_packing")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      loadRecentData();
+    } catch (err: any) {
+      console.error("Error:", err);
+      alert(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const glassCard = "rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl";
@@ -588,9 +642,14 @@ export default function PowderCoatPacking() {
                       <td className="px-3 py-3">{row.nonbrand_enabled ? <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-300">Yes</span> : <span className="text-zinc-600">—</span>}</td>
                       <td className="px-3 py-3">{row.weightbar_enabled ? <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-xs text-purple-300">Yes</span> : <span className="text-zinc-600">—</span>}</td>
                       <td className="px-3 py-3 text-right">
-                        <button onClick={() => editRecentRecord(row)} className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300">
-                          Edit
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => editRecentRecord(row)} className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-blue-400 transition hover:border-blue-500 hover:text-blue-300">
+                            Edit
+                          </button>
+                          <button onClick={() => handleDeleteRecent(row.id)} disabled={loading} className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-red-400 transition hover:border-red-500 hover:text-red-300 disabled:opacity-50">
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
